@@ -158,7 +158,32 @@ llvm::Value* generateVariableDeclIR(const std::string& name, SymbolType type, in
         std::cerr << "ERROR: Invalid type for variable " << name << std::endl;
         return nullptr;
     }
+    // Scope 0 = outside every function. A global is not stack memory, so it
+    // can't be an alloca; it lives in the module itself and starts at zero.
+    if (scope == 0) {
+        return new llvm::GlobalVariable(*module, llvmType, false,
+                                        llvm::GlobalValue::InternalLinkage,
+                                        llvm::Constant::getNullValue(llvmType), name);
+    }
     return builder.CreateAlloca(llvmType, nullptr, name);
+}
+
+// Globals are initialized before the program runs, so their initial value
+// must be a constant known at compile time (e.g. 5 or 2 + 3, which IRBuilder
+// folds into a single constant). Returns false if it isn't.
+bool setGlobalInitializerIR(llvm::Value* global, llvm::Value* value) {
+    llvm::GlobalVariable* gv = llvm::dyn_cast<llvm::GlobalVariable>(global);
+    llvm::Constant* init = llvm::dyn_cast_or_null<llvm::Constant>(value);
+    if (!gv || !init || init->getType() != gv->getValueType()) {
+        return false;
+    }
+    gv->setInitializer(init);
+    return true;
+}
+
+// The builder only has an insert block while we are inside a function body
+bool insideFunction() {
+    return builder.GetInsertBlock() != nullptr;
 }
 
 llvm::Value* generateArrayDeclIR(const std::string& name, SymbolType type, int size, int scope) {
@@ -169,6 +194,12 @@ llvm::Value* generateArrayDeclIR(const std::string& name, SymbolType type, int s
         return nullptr;
     }
     llvm::ArrayType* arrayType = llvm::ArrayType::get(elementType, size);
+    if (scope == 0) {
+        // Global array, zero-initialized like a global variable
+        return new llvm::GlobalVariable(*module, arrayType, false,
+                                        llvm::GlobalValue::InternalLinkage,
+                                        llvm::Constant::getNullValue(arrayType), name);
+    }
     return builder.CreateAlloca(arrayType, nullptr, name);
 }
 
@@ -189,6 +220,11 @@ llvm::Value* generateExprIR(SymbolType exprType, const std::string& op, llvm::Va
         }
     } else if (!ident.empty()) {
         Symbol* sym = lookup(ident.c_str());
+        if (!insideFunction()) {
+            // e.g. "int g = x;" at global scope: a load needs a function to live in
+            std::cerr << "ERROR: Cannot read variable " << ident << " outside a function\n";
+            return nullptr;
+        }
         if (sym && sym->kind == VAR) {
             std::cout << "DEBUG: Loading variable " << ident << std::endl;
             return builder.CreateLoad(getLLVMType(sym->type), sym->value, ident);
@@ -263,6 +299,10 @@ llvm::Value* generateFunctionCallIR(const std::string& name, Param* args) {
     llvm::Function* func = module->getFunction(name);
     if (!func) {
         std::cerr << "Error: Function '" << name << "' not found" << std::endl;
+        return nullptr;
+    }
+    if (!insideFunction()) {
+        std::cerr << "ERROR: Cannot call function " << name << " outside a function\n";
         return nullptr;
     }
     std::vector<llvm::Value*> argValues;

@@ -24,6 +24,8 @@ void initLLVM(const std::string& moduleName);
 llvm::Type* getLLVMType(SymbolType type);
 llvm::Function* generateFunctionIR(const std::string& name, SymbolType returnType, Param* params, bool isDefined);
 llvm::Value* generateVariableDeclIR(const std::string& name, SymbolType type, int scope);
+bool setGlobalInitializerIR(llvm::Value* global, llvm::Value* value);
+bool insideFunction();
 llvm::Value* generateArrayDeclIR(const std::string& name, SymbolType type, int size, int scope);
 llvm::Value* generateExprIR(SymbolType exprType, const std::string& op, llvm::Value* lhs, llvm::Value* rhs, const std::string& ident, int number, float floatNum, bool boolVal);
 llvm::Value* generateLogicalIR(const std::string& op, llvm::Value* lhs, llvm::Value* rhs);

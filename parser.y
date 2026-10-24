@@ -123,8 +123,7 @@ function_definition:
         insertFunction($2, $1, $4, 1, func);
         currentScope++;
         printf("DEBUG: Incremented scope to %d\n", currentScope);
-        // Save current insert point and set to function's entry block
-        $<bb>$ = builder.GetInsertBlock();
+        // Start emitting instructions into the function's entry block
         llvm::BasicBlock* entry = &func->getEntryBlock();
         if (!entry->getTerminator()) {
             builder.SetInsertPoint(entry);
@@ -134,8 +133,6 @@ function_definition:
     {
         printf("Expanding rule: function_definition → type_specifier main_or_id LPAREN parameter_list_opt RPAREN compound_stmt (line %d)\n", yylineno);
         // If the body falls off the end without a return, add one ourselves.
-        // This must happen BEFORE restoring the old insert point, otherwise we
-        // would be checking the previous function's block instead of this one.
         llvm::BasicBlock* currentBB = builder.GetInsertBlock();
         if (!currentBB->getTerminator()) {
             llvm::Type* retType = currentBB->getParent()->getReturnType();
@@ -146,10 +143,10 @@ function_definition:
                 builder.CreateRet(llvm::Constant::getNullValue(retType));
             }
         }
-        // Restore previous insert point
-        if ($<bb>6) {
-            builder.SetInsertPoint($<bb>6);
-        }
+        // We are back at global scope, where there is no current block.
+        // Clearing the insert point means nothing (like a global variable)
+        // can accidentally be emitted into the function we just finished.
+        builder.ClearInsertionPoint();
         currentScope -= 2;
         // Parameters live in currentScope + 1; drop them so the next
         // function can reuse the same names.
@@ -529,7 +526,15 @@ var_decl:
         if ($3->getType()->isIntegerTy(32) ? TYPE_INT : ($3->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL) != currentType) {
             printf("Type Error: Cannot assign incompatible type to '%s' (line %d)\n", $1, yylineno);
         }
-        generateAssignIR($1, $3);
+        if (currentScope == 0) {
+            // Global: no code runs at global scope, so instead of a store
+            // the value becomes the global's initial value.
+            if (!setGlobalInitializerIR(alloc, $3)) {
+                printf("Semantic Error: Global variable '%s' must be initialized with a constant of the same type (line %d)\n", $1, yylineno);
+            }
+        } else {
+            generateAssignIR($1, $3);
+        }
     }
     | IDENTIFIER LBRACKET NUMBER RBRACKET {
         printf("Expanding rule: var_decl → IDENTIFIER LBRACKET NUMBER RBRACKET (line %d)\n", yylineno);
@@ -738,6 +743,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     yyin = file;
+    // Create the module up front: a file may start with global variables,
+    // which need the module before any function has been seen.
+    initLLVM("my_module");
     initSymbolTable();
     int result = yyparse();
     fclose(file);
