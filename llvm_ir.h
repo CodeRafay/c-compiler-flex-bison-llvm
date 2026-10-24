@@ -39,7 +39,7 @@ llvm::Value* generateRelationalIR(const std::string& op, llvm::Value* lhs, llvm:
 void generateAssignIR(const std::string& ident, llvm::Value* value);
 void generateReturnIR(llvm::Value* value);
 llvm::Value* generateFunctionCallIR(const std::string& name, Param* args);
-void generatePrintfIR(llvm::Value* value, const std::string& format);
+void generatePrintfIR(const std::string& format, const std::vector<llvm::Value*>& args);
 void generateScanfIR(const std::string& ident, SymbolType type);
 llvm::BasicBlock* generateForLoopIR(llvm::Value* init, llvm::Value* cond, llvm::Value* update);
 void generateWhileLoopIR(llvm::Value* cond);

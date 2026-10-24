@@ -43,7 +43,7 @@ Most compiler tutorials stop at parsing, or they jump straight to a full product
 - Functions with parameters and return values
 - Arithmetic `+ - * / %` and unary minus (`-x`), relational `< <= > >= == !=`, logical `&& || !`, increment and decrement `++ --`
 - Control flow: `if`/`else`, `while`, `for`, `switch`/`case`/`default`, `break`, `return`
-- I/O: `printf`, `scanf`
+- I/O: `printf`, `scanf`. `printf` accepts a real C format string (`printf("x=%d\n", x)`) or a simple label style (`printf("Sum: ", sum)` prints `Sum: 15` and a newline)
 
 **Compiler phases**
 - **Lexical analysis** with Flex: keywords, identifiers, literals, operators, comments
@@ -170,6 +170,7 @@ This is an active learning project. The front end is complete; code generation i
 | IR: expressions, variables, assignment | ✅ Working and verified with `lli` |
 | IR: functions (params, calls, prototypes) | ✅ Working and verified with `lli` |
 | IR: global variables | ✅ Working and verified with `lli` |
+| IR: `printf` (format strings, labels, int/float/bool) | ✅ Working and verified with `lli` |
 | IR: `if` / `else` | 🔴 Fails LLVM module verification |
 | IR: `while` / `for` | 🔴 Loop condition isn't re-evaluated |
 | IR: `switch` | 🟡 Untested |
@@ -183,7 +184,7 @@ This is an active learning project. The front end is complete; code generation i
 - [ ] Stop writing IR when semantic errors occur
 - [ ] Optimization passes (mem2reg, constant folding)
 - [ ] Native executables via `llc` and the system linker
-- [ ] String support in `printf`
+- [x] String support in `printf`
 
 ## FAQ
 

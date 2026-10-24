@@ -16,6 +16,7 @@ extern int yylineno;
 void yyerror(const char *s);
 int yylex(void);
 Symbol* checkArrayAccess(const char* name, llvm::Value* index);
+void emitPrintf(const char* quoted, Param* args);
 SymbolType currentType;
 int currentScope = 0;
 extern llvm::SwitchInst* currentSwitchInst;
@@ -325,14 +326,19 @@ stmt:
     }
     | PRINTF LPAREN arg_list RPAREN SEMI {
         printf("Expanding rule: stmt → PRINTF LPAREN arg_list RPAREN SEMI (line %d)\n", yylineno);
-        Param* args = $3;
-        if (args && args->type == TYPE_INT) {
-            generatePrintfIR(args->value, "%d\n");
-        } else if (args && args->type == TYPE_FLOAT) {
-            generatePrintfIR(args->value, "%f\n");
-        } else if (args && args->type == TYPE_BOOL) {
-            generatePrintfIR(args->value, "%d\n");
-        }
+        emitPrintf(NULL, $3);
+        $$ = nullptr;
+    }
+    | PRINTF LPAREN STRING RPAREN SEMI {
+        printf("Expanding rule: stmt → PRINTF LPAREN STRING RPAREN SEMI (line %d)\n", yylineno);
+        emitPrintf($3, NULL);
+        free($3);
+        $$ = nullptr;
+    }
+    | PRINTF LPAREN STRING COMMA arg_list RPAREN SEMI {
+        printf("Expanding rule: stmt → PRINTF LPAREN STRING COMMA arg_list RPAREN SEMI (line %d)\n", yylineno);
+        emitPrintf($3, $5);
+        free($3);
         $$ = nullptr;
     }
     | SCANF LPAREN IDENTIFIER RPAREN SEMI {
@@ -769,6 +775,65 @@ arg_list:
 
 void yyerror(const char *s) {
     fprintf(stderr, "Syntax Error: %s at line %d\n", s, yylineno);
+}
+
+// The lexer gives us the string literal exactly as written, quotes and
+// backslashes included. Strip the quotes and turn escape sequences like \n
+// into the real characters they stand for.
+static std::string unescapeString(const char* quoted) {
+    std::string out;
+    size_t len = strlen(quoted);
+    for (size_t i = 1; i + 1 < len; i++) { // skip the opening and closing quote
+        if (quoted[i] == '\\' && i + 2 < len) {
+            i++;
+            switch (quoted[i]) {
+                case 'n': out += '\n'; break;
+                case 't': out += '\t'; break;
+                case '\\': out += '\\'; break;
+                case '"': out += '"'; break;
+                default: out += '\\'; out += quoted[i]; break;
+            }
+        } else {
+            out += quoted[i];
+        }
+    }
+    return out;
+}
+
+// printf supports two styles:
+//   1. A real C format string, recognized by containing '%':
+//        printf("x=%d y=%f\n", x, y);   → passed to C's printf unchanged
+//   2. Label style, for strings without '%' (and for no string at all):
+//        printf("Sum: ", sum);  → prints "Sum: 15" and a newline
+//        printf(a, b);          → prints "1 2" and a newline
+//      Here we build the format ourselves from each argument's type.
+void emitPrintf(const char* quoted, Param* args) {
+    std::string text = quoted ? unescapeString(quoted) : "";
+    std::vector<llvm::Value*> values;
+    for (Param* p = args; p != NULL; p = p->next) {
+        if (!p->value) {
+            printf("Semantic Error: Invalid argument to printf (line %d)\n", yylineno);
+            return;
+        }
+        values.push_back(p->value);
+    }
+
+    std::string format = text;
+    if (text.find('%') == std::string::npos) {
+        for (size_t i = 0; i < values.size(); i++) {
+            if (i > 0) format += " ";
+            format += values[i]->getType()->isFloatTy() ? "%f" : "%d";
+        }
+        format += "\n";
+    }
+    generatePrintfIR(format, values);
+
+    // The argument list was malloc'd by arg_list and isn't needed anymore
+    while (args != NULL) {
+        Param* next = args->next;
+        free(args);
+        args = next;
+    }
 }
 
 // Semantic checks shared by array reads (a[i]) and writes (a[i] = x):

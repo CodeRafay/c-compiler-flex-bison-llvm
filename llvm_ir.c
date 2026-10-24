@@ -35,7 +35,13 @@ llvm::Type* getLLVMType(SymbolType type) {
     }
 }
 
+// printf and scanf are declared once per module and reused by every call.
+// Declaring them again would make LLVM rename the copy to printf.1, which
+// doesn't exist in the C library, so the program would fail to link.
 llvm::Function* getPrintfFunction() {
+    if (llvm::Function* existing = module->getFunction("printf")) {
+        return existing;
+    }
     llvm::FunctionType* printfType = llvm::FunctionType::get(
         llvm::Type::getInt32Ty(context),
         {llvm::Type::getInt8PtrTy(context)},
@@ -50,6 +56,9 @@ llvm::Function* getPrintfFunction() {
 }
 
 llvm::Function* getScanfFunction() {
+    if (llvm::Function* existing = module->getFunction("scanf")) {
+        return existing;
+    }
     llvm::FunctionType* scanfType = llvm::FunctionType::get(
         llvm::Type::getInt32Ty(context),
         {llvm::Type::getInt8PtrTy(context)},
@@ -380,11 +389,23 @@ llvm::Value* generateFunctionCallIR(const std::string& name, Param* args) {
     return builder.CreateCall(func, argValues, name + "_call");
 }
 
-void generatePrintfIR(llvm::Value* value, const std::string& format) {
-    std::cout << "DEBUG: Generating printf\n";
+void generatePrintfIR(const std::string& format, const std::vector<llvm::Value*>& args) {
+    std::cout << "DEBUG: Generating printf with format \"" << format << "\"\n";
     llvm::Function* printfFunc = getPrintfFunction();
-    llvm::Value* formatStr = builder.CreateGlobalStringPtr(format, "format");
-    builder.CreateCall(printfFunc, {formatStr, value});
+    std::vector<llvm::Value*> callArgs;
+    callArgs.push_back(builder.CreateGlobalStringPtr(format, "format"));
+    for (llvm::Value* arg : args) {
+        // C's rule for variadic functions like printf: a float argument is
+        // passed as a double, and small integers (our bool, i1) as an int.
+        // Without this, printf reads garbage (e.g. 0.000000 for 1.5).
+        if (arg->getType()->isFloatTy()) {
+            arg = builder.CreateFPExt(arg, llvm::Type::getDoubleTy(context), "promoted");
+        } else if (arg->getType()->isIntegerTy(1)) {
+            arg = builder.CreateZExt(arg, llvm::Type::getInt32Ty(context), "promoted");
+        }
+        callArgs.push_back(arg);
+    }
+    builder.CreateCall(printfFunc, callArgs);
 }
 
 void generateScanfIR(const std::string& ident, SymbolType type) {
