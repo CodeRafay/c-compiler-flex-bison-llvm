@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include "symbol_table.h"
 #include "llvm_ir.h"
 
@@ -17,6 +18,8 @@ void yyerror(const char *s);
 int yylex(void);
 Symbol* checkArrayAccess(const char* name, llvm::Value* index);
 void emitPrintf(const char* quoted, Param* args);
+void reportError(const char* format, ...);
+int errorCount = 0; // semantic/type errors seen so far; any error = failed compile
 SymbolType currentType;
 int currentScope = 0;
 extern llvm::SwitchInst* currentSwitchInst;
@@ -72,7 +75,7 @@ program:
     declaration_or_function_list 
     {
         printf("Expanding rule: program → declaration_or_function_list (line %d)\n", yylineno);
-        writeIRToFile("output.ll");
+        // The IR is written by main() once we know there were no errors
     }
     ;
 
@@ -105,7 +108,7 @@ function_definition:
         int paramIndex = 1;
         for (Param* p = $4; p != NULL; p = p->next, paramIndex++) {
             if (p->name == NULL) {
-                printf("Semantic Error: Parameter %d of '%s' needs a name in a function definition (line %d)\n", paramIndex, $2, yylineno);
+                reportError("Semantic Error: Parameter %d of '%s' needs a name in a function definition (line %d)\n", paramIndex, $2, yylineno);
                 YYERROR;
             }
         }
@@ -114,7 +117,7 @@ function_definition:
         printf("DEBUG: Calling generateFunctionIR for %s\n", $2);
         llvm::Function* func = generateFunctionIR($2, $1, $4, true);
         if (!func) {
-            printf("Error: Failed to generate function IR for '%s' (line %d)\n", $2, yylineno);
+            reportError("Error: Failed to generate function IR for '%s' (line %d)\n", $2, yylineno);
             YYERROR;
         }
         // Parameters go into the symbol table only AFTER generateFunctionIR,
@@ -124,7 +127,7 @@ function_definition:
         while (temp != NULL) {
             printf("DEBUG: Inserting parameter %s, type=%d\n", temp->name, temp->type);
             if (!insertVariable(temp->name, temp->type, currentScope, temp->value)) {
-                printf("Semantic Error: Duplicate parameter '%s' in function '%s' (line %d)\n", temp->name, $2, yylineno);
+                reportError("Semantic Error: Duplicate parameter '%s' in function '%s' (line %d)\n", temp->name, $2, yylineno);
                 YYERROR;
             }
             temp = temp->next;
@@ -261,12 +264,12 @@ stmt:
         printf("Expanding rule: stmt → IDENTIFIER ASSIGN expr SEMI (line %d)\n", yylineno);
         Symbol* lhs = lookup($1);
         if (!lhs) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
         } else if (isArrayVariable(lhs->value)) {
-            printf("Semantic Error: Cannot assign to array '%s' as a whole; assign an element, e.g. %s[0] = ... (line %d)\n", $1, $1, yylineno);
+            reportError("Semantic Error: Cannot assign to array '%s' as a whole; assign an element, e.g. %s[0] = ... (line %d)\n", $1, $1, yylineno);
         } else {
             if ($3 && lhs->type != ($3->getType()->isIntegerTy(32) ? TYPE_INT : ($3->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL))) {
-                printf("Type Error: Cannot assign incompatible type to '%s' (line %d)\n", $1, yylineno);
+                reportError("Type Error: Cannot assign incompatible type to '%s' (line %d)\n", $1, yylineno);
             }
             generateAssignIR($1, $3);
         }
@@ -278,7 +281,7 @@ stmt:
         if (sym && $6) {
             // sym->type is the element type (int a[5] → TYPE_INT)
             if (sym->type != ($6->getType()->isIntegerTy(32) ? TYPE_INT : ($6->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL))) {
-                printf("Type Error: Cannot assign incompatible type to element of '%s' (line %d)\n", $1, yylineno);
+                reportError("Type Error: Cannot assign incompatible type to element of '%s' (line %d)\n", $1, yylineno);
             } else {
                 generateArrayStoreIR(sym->value, $3, $6);
             }
@@ -289,7 +292,7 @@ stmt:
         printf("Expanding rule: stmt → IDENTIFIER INCR SEMI (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
         } else {
             llvm::Value* val = builder.CreateLoad(getLLVMType(sym->type), sym->value, $1);
             llvm::Value* inc = builder.CreateAdd(val, llvm::ConstantInt::get(context, llvm::APInt(32, 1)), "inctmp");
@@ -301,7 +304,7 @@ stmt:
         printf("Expanding rule: stmt → IDENTIFIER DECR SEMI (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
         } else {
             llvm::Value* val = builder.CreateLoad(getLLVMType(sym->type), sym->value, $1);
             llvm::Value* dec = builder.CreateSub(val, llvm::ConstantInt::get(context, llvm::APInt(32, 1)), "dectmp");
@@ -313,7 +316,7 @@ stmt:
         printf("Expanding rule: stmt → INCR IDENTIFIER SEMI (line %d)\n", yylineno);
         Symbol* sym = lookup($2);
         if (!sym) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $2, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $2, yylineno);
         } else {
             llvm::Value* val = builder.CreateLoad(getLLVMType(sym->type), sym->value, $2);
             llvm::Value* inc = builder.CreateAdd(val, llvm::ConstantInt::get(context, llvm::APInt(32, 1)), "inctmp");
@@ -325,7 +328,7 @@ stmt:
         printf("Expanding rule: stmt → DECR IDENTIFIER SEMI (line %d)\n", yylineno);
         Symbol* sym = lookup($2);
         if (!sym) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $2, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $2, yylineno);
         } else {
             llvm::Value* val = builder.CreateLoad(getLLVMType(sym->type), sym->value, $2);
             llvm::Value* dec = builder.CreateSub(val, llvm::ConstantInt::get(context, llvm::APInt(32, 1)), "dectmp");
@@ -336,7 +339,7 @@ stmt:
     | IDENTIFIER LPAREN arg_list_opt RPAREN SEMI {
         printf("Expanding rule: stmt → IDENTIFIER LPAREN arg_list_opt RPAREN SEMI (line %d)\n", yylineno);
         if (!checkFunctionCallArgs($1, $3)) {
-            printf("Semantic Error: Invalid arguments for function '%s' (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Invalid arguments for function '%s' (line %d)\n", $1, yylineno);
         } else {
             generateFunctionCallIR($1, $3);
         }
@@ -363,7 +366,7 @@ stmt:
         printf("Expanding rule: stmt → SCANF LPAREN IDENTIFIER RPAREN SEMI (line %d)\n", yylineno);
         Symbol* sym = lookup($3);
         if (!sym) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $3, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $3, yylineno);
         } else {
             generateScanfIR($3, sym->type);
         }
@@ -387,7 +390,7 @@ stmt:
     | IF LPAREN expr RPAREN compound_stmt %prec THEN {
         printf("Expanding rule: stmt → IF LPAREN expr RPAREN compound_stmt (line %d)\n", yylineno);
         if (!$3) {
-            printf("Semantic Error: Invalid condition in if statement (line %d)\n", yylineno);
+            reportError("Semantic Error: Invalid condition in if statement (line %d)\n", yylineno);
             YYERROR;
         }
         llvm::BasicBlock* prevInsert = builder.GetInsertBlock();
@@ -404,7 +407,7 @@ stmt:
     | IF LPAREN expr RPAREN compound_stmt ELSE compound_stmt {
         printf("Expanding rule: stmt → IF LPAREN expr RPAREN compound_stmt ELSE compound_stmt (line %d)\n", yylineno);
         if (!$3) {
-            printf("Semantic Error: Invalid condition in if statement (line %d)\n", yylineno);
+            reportError("Semantic Error: Invalid condition in if statement (line %d)\n", yylineno);
             YYERROR;
         }
         llvm::BasicBlock* prevInsert = builder.GetInsertBlock();
@@ -424,7 +427,7 @@ stmt:
     | RETURN expr SEMI {
         printf("Expanding rule: stmt → RETURN expr SEMI (line %d)\n", yylineno);
         if (!$2) {
-            printf("Semantic Error: Invalid return expression (line %d)\n", yylineno);
+            reportError("Semantic Error: Invalid return expression (line %d)\n", yylineno);
             YYERROR;
         }
         printf("Generating return for expr at %p\n", $2);
@@ -437,7 +440,7 @@ stmt:
             // Insert point is already set to switch_cont in switch_start
             builder.SetInsertPoint($<bb>1); // Ensure insert point is switch_cont
         } else {
-            printf("Error: No after_switch block for switch statement (line %d)\n", yylineno);
+            reportError("Error: No after_switch block for switch statement (line %d)\n", yylineno);
         }
         currentSwitchInst = nullptr;
         afterSwitchBB = nullptr;
@@ -450,7 +453,7 @@ switch_start:
     SWITCH LPAREN expr RPAREN LBRACE {
         printf("Expanding rule: switch start → SWITCH LPAREN expr RPAREN LBRACE (line %d)\n", yylineno);
         if (!$3) {
-            printf("Semantic Error: Invalid switch expression (line %d)\n", yylineno);
+            reportError("Semantic Error: Invalid switch expression (line %d)\n", yylineno);
             YYERROR;
         }
         generateSwitchIR($3);
@@ -474,7 +477,7 @@ init_expr:
         printf("Expanding rule: init_expr → IDENTIFIER ASSIGN expr (line %d)\n", yylineno);
         Symbol* lhs = lookup($1);
         if (!lhs) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
         } else {
             generateAssignIR($1, $3);
             $$ = $3;
@@ -487,7 +490,7 @@ update_expr:
         printf("Expanding rule: update_expr → IDENTIFIER INCR (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
             $$ = nullptr;
         } else {
             llvm::Value* val = builder.CreateLoad(getLLVMType(sym->type), sym->value, $1);
@@ -500,7 +503,7 @@ update_expr:
         printf("Expanding rule: update_expr → vestitiDECR (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
             $$ = nullptr;
         } else {
             llvm::Value* val = builder.CreateLoad(getLLVMType(sym->type), sym->value, $1);
@@ -513,7 +516,7 @@ update_expr:
         printf("Expanding rule: update_expr → IDENTIFIER ASSIGN expr (line %d)\n", yylineno);
         Symbol* lhs = lookup($1);
         if (!lhs) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
             $$ = nullptr;
         } else {
             generateAssignIR($1, $3);
@@ -536,12 +539,12 @@ var_decl:
         printf("Expanding rule: var_decl → IDENTIFIER (line %d)\n", yylineno);
         llvm::Value* alloc = generateVariableDeclIR($1, currentType, currentScope);
         if (!alloc) {
-            printf("Error: Failed to generate variable declaration for '%s' (line %d)\n", $1, yylineno);
+            reportError("Error: Failed to generate variable declaration for '%s' (line %d)\n", $1, yylineno);
             YYERROR;
         }
         Symbol* sym = lookup($1);
         if (sym && sym->scope == currentScope && sym->kind == VAR) {
-            printf("Semantic Error: Variable '%s' redeclared in scope %d (line %d)\n", $1, currentScope, yylineno);
+            reportError("Semantic Error: Variable '%s' redeclared in scope %d (line %d)\n", $1, currentScope, yylineno);
             YYERROR;
         }
         insertVariable($1, currentType, currentScope, alloc);
@@ -550,27 +553,27 @@ var_decl:
         printf("Expanding rule: var_decl → IDENTIFIER ASSIGN expr (line %d)\n", yylineno);
         llvm::Value* alloc = generateVariableDeclIR($1, currentType, currentScope);
         if (!alloc) {
-            printf("Error: Failed to generate variable declaration for '%s' (line %d)\n", $1, yylineno);
+            reportError("Error: Failed to generate variable declaration for '%s' (line %d)\n", $1, yylineno);
             YYERROR;
         }
         Symbol* sym = lookup($1);
         if (sym && sym->scope == currentScope && sym->kind == VAR) {
-            printf("Semantic Error: Variable '%s' redeclared in scope %d (line %d)\n", $1, currentScope, yylineno);
+            reportError("Semantic Error: Variable '%s' redeclared in scope %d (line %d)\n", $1, currentScope, yylineno);
             YYERROR;
         }
         insertVariable($1, currentType, currentScope, alloc);
         if (!$3) {
-            printf("Error: Expression for assignment to '%s' is invalid (line %d)\n", $1, yylineno);
+            reportError("Error: Expression for assignment to '%s' is invalid (line %d)\n", $1, yylineno);
             YYERROR;
         }
         if ($3->getType()->isIntegerTy(32) ? TYPE_INT : ($3->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL) != currentType) {
-            printf("Type Error: Cannot assign incompatible type to '%s' (line %d)\n", $1, yylineno);
+            reportError("Type Error: Cannot assign incompatible type to '%s' (line %d)\n", $1, yylineno);
         }
         if (currentScope == 0) {
             // Global: no code runs at global scope, so instead of a store
             // the value becomes the global's initial value.
             if (!setGlobalInitializerIR(alloc, $3)) {
-                printf("Semantic Error: Global variable '%s' must be initialized with a constant of the same type (line %d)\n", $1, yylineno);
+                reportError("Semantic Error: Global variable '%s' must be initialized with a constant of the same type (line %d)\n", $1, yylineno);
             }
         } else {
             generateAssignIR($1, $3);
@@ -579,17 +582,17 @@ var_decl:
     | IDENTIFIER LBRACKET NUMBER RBRACKET {
         printf("Expanding rule: var_decl → IDENTIFIER LBRACKET NUMBER RBRACKET (line %d)\n", yylineno);
         if ($3 <= 0) {
-            printf("Semantic Error: Array '%s' must have a size greater than 0 (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Array '%s' must have a size greater than 0 (line %d)\n", $1, yylineno);
             YYERROR;
         }
         Symbol* sym = lookup($1);
         if (sym && sym->scope == currentScope && sym->kind == VAR) {
-            printf("Semantic Error: Variable '%s' redeclared in scope %d (line %d)\n", $1, currentScope, yylineno);
+            reportError("Semantic Error: Variable '%s' redeclared in scope %d (line %d)\n", $1, currentScope, yylineno);
             YYERROR;
         }
         llvm::Value* alloc = generateArrayDeclIR($1, currentType, $3, currentScope);
         if (!alloc) {
-            printf("Error: Failed to generate array declaration for '%s' (line %d)\n", $1, yylineno);
+            reportError("Error: Failed to generate array declaration for '%s' (line %d)\n", $1, yylineno);
             YYERROR;
         }
         insertVariable($1, currentType, currentScope, alloc);
@@ -608,7 +611,7 @@ case_stmt:
         if (afterSwitchBB) {
             builder.CreateBr(afterSwitchBB);
         } else {
-            printf("Error: No after_switch block for case %d (line %d)\n", $2, yylineno);
+            reportError("Error: No after_switch block for case %d (line %d)\n", $2, yylineno);
         }
     }
     | DEFAULT COLON stmt_list BREAK SEMI {
@@ -617,7 +620,7 @@ case_stmt:
         if (afterSwitchBB) {
             builder.CreateBr(afterSwitchBB);
         } else {
-            printf("Error: No after_switch block for default case (line %d)\n", yylineno);
+            reportError("Error: No after_switch block for default case (line %d)\n", yylineno);
         }
     }
     | DEFAULT COLON stmt_list {
@@ -626,7 +629,7 @@ case_stmt:
         if (afterSwitchBB) {
             builder.CreateBr(afterSwitchBB);
         } else {
-            printf("Error: No after_switch block for default case (line %d)\n", yylineno);
+            reportError("Error: No after_switch block for default case (line %d)\n", yylineno);
         }
     }
     ;
@@ -635,35 +638,35 @@ expr:
     expr PLUS expr {
         printf("Expanding rule: expr → expr PLUS expr (line %d)\n", yylineno);
         if ($1 && $3 && $1->getType() != $3->getType()) {
-            printf("Type Error: Mismatched types in addition at line %d\n", yylineno);
+            reportError("Type Error: Mismatched types in addition at line %d\n", yylineno);
         }
         $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "+", $1, $3, "", 0, 0.0, false);
     }
     | expr MINUS expr {
         printf("Expanding rule: expr → expr MINUS expr (line %d)\n", yylineno);
         if ($1 && $3 && $1->getType() != $3->getType()) {
-            printf("Type Error: Mismatched types in subtraction at line %d\n", yylineno);
+            reportError("Type Error: Mismatched types in subtraction at line %d\n", yylineno);
         }
         $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "-", $1, $3, "", 0, 0.0, false);
     }
     | expr MULT expr {
         printf("Expanding rule: expr → expr MULT expr (line %d)\n", yylineno);
         if ($1 && $3 && $1->getType() != $3->getType()) {
-            printf("Type Error: Mismatched types in multiplication at line %d\n", yylineno);
+            reportError("Type Error: Mismatched types in multiplication at line %d\n", yylineno);
         }
         $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "*", $1, $3, "", 0, 0.0, false);
     }
     | expr DIV expr {
         printf("Expanding rule: expr → expr DIV expr (line %d)\n", yylineno);
         if ($1 && $3 && $1->getType() != $3->getType()) {
-            printf("Type Error: Mismatched types in division at line %d\n", yylineno);
+            reportError("Type Error: Mismatched types in division at line %d\n", yylineno);
         }
         $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "/", $1, $3, "", 0, 0.0, false);
     }
     | expr MOD expr {
         printf("Expanding rule: expr → expr MOD expr (line %d)\n", yylineno);
         if ($1 && $3 && $1->getType() != $3->getType()) {
-            printf("Type Error: Mismatched types in modulo at line %d\n", yylineno);
+            reportError("Type Error: Mismatched types in modulo at line %d\n", yylineno);
         }
         $$ = generateExprIR(TYPE_INT, "%", $1, $3, "", 0, 0.0, false);
     }
@@ -729,10 +732,10 @@ expr:
         printf("Expanding rule: expr → IDENTIFIER (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
-            printf("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
             $$ = nullptr;
         } else if (isArrayVariable(sym->value)) {
-            printf("Semantic Error: Array '%s' must be used with an index, e.g. %s[0] (line %d)\n", $1, $1, yylineno);
+            reportError("Semantic Error: Array '%s' must be used with an index, e.g. %s[0] (line %d)\n", $1, $1, yylineno);
             $$ = nullptr;
         } else if (sym->kind == VAR) {
             $$ = generateExprIR(sym->type, "", nullptr, nullptr, $1, 0, 0.0, false);
@@ -743,7 +746,7 @@ expr:
     | IDENTIFIER LPAREN arg_list_opt RPAREN {
         printf("Expanding rule: expr → IDENTIFIER LPAREN arg_list_opt RPAREN (line %d)\n", yylineno);
         if (!checkFunctionCallArgs($1, $3)) {
-            printf("Semantic Error: Invalid arguments for function '%s' (line %d)\n", $1, yylineno);
+            reportError("Semantic Error: Invalid arguments for function '%s' (line %d)\n", $1, yylineno);
             $$ = nullptr;
         } else {
             $$ = generateFunctionCallIR($1, $3);
@@ -793,6 +796,18 @@ arg_list:
 
 void yyerror(const char *s) {
     fprintf(stderr, "Syntax Error: %s at line %d\n", s, yylineno);
+    errorCount++;
+}
+
+// Every semantic and type error is printed through this one function, so
+// it can also be counted. A compiler must not report success (or produce
+// output) when the program had errors, even if parsing itself finished.
+void reportError(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+    errorCount++;
 }
 
 // The lexer gives us the string literal exactly as written, quotes and
@@ -830,7 +845,7 @@ void emitPrintf(const char* quoted, Param* args) {
     std::vector<llvm::Value*> values;
     for (Param* p = args; p != NULL; p = p->next) {
         if (!p->value) {
-            printf("Semantic Error: Invalid argument to printf (line %d)\n", yylineno);
+            reportError("Semantic Error: Invalid argument to printf (line %d)\n", yylineno);
             return;
         }
         values.push_back(p->value);
@@ -861,22 +876,22 @@ void emitPrintf(const char* quoted, Param* args) {
 Symbol* checkArrayAccess(const char* name, llvm::Value* index) {
     Symbol* sym = lookup(name);
     if (!sym) {
-        printf("Semantic Error: Variable '%s' not declared (line %d)\n", name, yylineno);
+        reportError("Semantic Error: Variable '%s' not declared (line %d)\n", name, yylineno);
         return NULL;
     }
     if (!isArrayVariable(sym->value)) {
-        printf("Semantic Error: '%s' is not an array (line %d)\n", name, yylineno);
+        reportError("Semantic Error: '%s' is not an array (line %d)\n", name, yylineno);
         return NULL;
     }
     if (!index || !index->getType()->isIntegerTy(32)) {
-        printf("Semantic Error: Index of array '%s' must be an int (line %d)\n", name, yylineno);
+        reportError("Semantic Error: Index of array '%s' must be an int (line %d)\n", name, yylineno);
         return NULL;
     }
     if (llvm::ConstantInt* constIndex = llvm::dyn_cast<llvm::ConstantInt>(index)) {
         long long i = constIndex->getSExtValue();
         int size = getArraySize(sym->value);
         if (i < 0 || i >= size) {
-            printf("Semantic Error: Index %lld is out of bounds for array '%s' of size %d (line %d)\n", i, name, size, yylineno);
+            reportError("Semantic Error: Index %lld is out of bounds for array '%s' of size %d (line %d)\n", i, name, size, yylineno);
             return NULL;
         }
     }
@@ -907,7 +922,21 @@ int main(int argc, char *argv[]) {
     }
     printSymbolTable();
     freeSymbolTable();
-    return result;
+
+    // Only produce output.ll for an error-free program. On failure, delete
+    // any output.ll left from an earlier run so it can't be mistaken for
+    // this one, and exit with 1 so scripts (and make) see the failure.
+    bool ok = (result == 0 && errorCount == 0);
+    if (ok && !writeIRToFile("output.ll")) {
+        errorCount++; // the IR failed LLVM's verifier
+        ok = false;
+    }
+    if (!ok) {
+        remove("output.ll");
+        fprintf(stderr, "Compilation failed with %d error(s).\n", errorCount > 0 ? errorCount : 1);
+        return 1;
+    }
+    return 0;
 
     // HOW TO RUN ??
     //  make clean

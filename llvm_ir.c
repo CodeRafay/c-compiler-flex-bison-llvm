@@ -539,24 +539,25 @@ void generateDefaultCaseIR() {
     builder.SetInsertPoint(defaultBB);
 }
 
-void writeIRToFile(const std::string& filename) {
+bool writeIRToFile(const std::string& filename) {
     std::cout << "DEBUG: Writing IR to " << filename << std::endl;
     if (!module) {
         std::cerr << "Error: Module is null" << std::endl;
-        return;
+        return false;
     }
     std::cerr << "Module function count: " << module->size() << std::endl;
     if (llvm::verifyModule(*module, &llvm::errs())) {
         std::cerr << "Module verification failed" << std::endl;
-        return;
+        return false;
     }
     std::error_code EC;
     llvm::raw_fd_ostream out(filename, EC);
     if (EC) {
         std::cerr << "Error opening file " << filename << ": " << EC.message() << std::endl;
-        return;
+        return false;
     }
     module->print(out, nullptr);
     out.close();
     std::cout << "IR written to " << filename << std::endl;
+    return true;
 }

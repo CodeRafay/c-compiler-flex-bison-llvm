@@ -78,6 +78,8 @@ make                                   # builds ./compiler
 lli output.ll; echo $?                 # runs the program, prints main's return value
 ```
 
+If the program has any syntax, semantic, or type errors, `./compiler` prints them, exits with status 1, and writes no `output.ll`.
+
 Run `make clean` to remove all build artifacts.
 
 ## Example

@@ -48,7 +48,7 @@ void finalizeIfStmtIR(void* elseStmt);
 void generateSwitchIR(llvm::Value* expr);
 void generateCaseIR(int value);
 void generateDefaultCaseIR();
-void writeIRToFile(const std::string& filename);
+bool writeIRToFile(const std::string& filename);
 
 #ifdef __cplusplus
 }
