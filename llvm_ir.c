@@ -114,6 +114,11 @@ llvm::Function* generateFunctionIR(const std::string& name, SymbolType returnTyp
             std::cerr << "ERROR: Function " << name << " already has a body\n";
             return nullptr;
         }
+        // The prototype and this declaration must agree on return and parameter types
+        if (function->getFunctionType() != funcType) {
+            std::cerr << "ERROR: Conflicting types for function " << name << std::endl;
+            return nullptr;
+        }
         std::cout << "DEBUG: Reusing earlier declaration of " << name << std::endl;
     } else {
         function = llvm::Function::Create(

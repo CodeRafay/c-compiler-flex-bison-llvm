@@ -100,6 +100,15 @@ function_definition:
         initLLVM("my_module"); // Ensure module is initialized
         currentScope++;
         printf("DEBUG: Incremented scope to %d\n", currentScope);
+        // A prototype may leave parameter names out (int add(int, int);),
+        // but a definition can't: the body has no way to refer to them.
+        int paramIndex = 1;
+        for (Param* p = $4; p != NULL; p = p->next, paramIndex++) {
+            if (p->name == NULL) {
+                printf("Semantic Error: Parameter %d of '%s' needs a name in a function definition (line %d)\n", paramIndex, $2, yylineno);
+                YYERROR;
+            }
+        }
         // Use $1 (the return type), not currentType: parsing the parameters
         // has already overwritten currentType with the last parameter's type.
         printf("DEBUG: Calling generateFunctionIR for %s\n", $2);
@@ -113,12 +122,11 @@ function_definition:
         // Every later use of the parameter loads from temp->value.
         Param* temp = $4;
         while (temp != NULL) {
-            if (temp->name == NULL) {
-                fprintf(stderr, "ERROR: Null parameter name in function %s (line %d)\n", $2, yylineno);
+            printf("DEBUG: Inserting parameter %s, type=%d\n", temp->name, temp->type);
+            if (!insertVariable(temp->name, temp->type, currentScope, temp->value)) {
+                printf("Semantic Error: Duplicate parameter '%s' in function '%s' (line %d)\n", temp->name, $2, yylineno);
                 YYERROR;
             }
-            printf("DEBUG: Inserting parameter %s, type=%d\n", temp->name, temp->type);
-            insertVariable(temp->name, temp->type, currentScope, temp->value);
             temp = temp->next;
         }
         printf("DEBUG: Inserting function %s\n", $2);
@@ -208,6 +216,16 @@ parameter_declaration:
             YYERROR;
         }
         p->type = currentType;
+        p->value = nullptr;
+        p->next = nullptr;
+        $$ = p;
+    }
+    | type_specifier {
+        // Unnamed parameter, only allowed in prototypes: int add(int, int);
+        printf("Expanding rule: parameter_declaration → type_specifier (line %d)\n", yylineno);
+        Param* p = (Param*)malloc(sizeof(Param));
+        p->name = NULL;
+        p->type = $1;
         p->value = nullptr;
         p->next = nullptr;
         $$ = p;

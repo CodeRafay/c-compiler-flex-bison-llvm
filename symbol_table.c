@@ -31,12 +31,13 @@ Symbol* lookupFunction(const char* name) {
     return NULL;
 }
 
-void insertVariable(const char* name, SymbolType type, int scope, llvm::Value* value) {
+// Returns 1 if inserted, 0 if the name is already declared in this scope
+// (the caller reports the error, since it knows the line number).
+int insertVariable(const char* name, SymbolType type, int scope, llvm::Value* value) {
     Symbol* current = symbolTable;
     while (current != NULL) {
         if (strcmp(current->name, name) == 0 && current->scope == scope && current->kind == VAR) {
-            fprintf(stderr, "Error: Variable '%s' already declared in scope %d\n", name, scope);
-            return;
+            return 0;
         }
         current = current->next;
     }
@@ -50,6 +51,7 @@ void insertVariable(const char* name, SymbolType type, int scope, llvm::Value* v
     sym->params = NULL;
     sym->next = symbolTable;
     symbolTable = sym;
+    return 1;
 }
 
 void insertFunction(const char* name, SymbolType returnType, Param* params, int isDefinition, llvm::Function* function) {

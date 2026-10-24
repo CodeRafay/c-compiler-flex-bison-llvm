@@ -40,7 +40,7 @@ Most compiler tutorials stop at parsing, or they jump straight to a full product
 **Language**
 - Types: `int`, `float`, `bool`, `void`
 - Global and local variables, one-dimensional arrays with compile-time bounds checks for constant indices
-- Functions with parameters and return values
+- Functions with parameters and return values; prototypes, which may leave out parameter names (`int add(int, int);`)
 - Arithmetic `+ - * / %` and unary minus (`-x`), relational `< <= > >= == !=`, logical `&& || !`, increment and decrement `++ --`
 - Control flow: `if`/`else`, `while`, `for`, `switch`/`case`/`default`, `break`, `return`
 - I/O: `printf`, `scanf`. `printf` accepts a real C format string (`printf("x=%d\n", x)`) or a simple label style (`printf("Sum: ", sum)` prints `Sum: 15` and a newline)
