@@ -241,6 +241,18 @@ llvm::Value* generateExprIR(SymbolType exprType, const std::string& op, llvm::Va
     return nullptr;
 }
 
+llvm::Value* generateNegateIR(llvm::Value* value) {
+    std::cout << "DEBUG: Generating negation\n";
+    if (!value) {
+        return nullptr;
+    }
+    // Integers and floats use different instructions (neg = 0 - x, fneg flips the sign bit)
+    if (value->getType()->isFloatTy()) {
+        return builder.CreateFNeg(value, "negtmp");
+    }
+    return builder.CreateNeg(value, "negtmp");
+}
+
 llvm::Value* generateLogicalIR(const std::string& op, llvm::Value* lhs, llvm::Value* rhs) {
     std::cout << "DEBUG: Generating logical op " << op << std::endl;
     if (op == "&&") {

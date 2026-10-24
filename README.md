@@ -41,7 +41,7 @@ Most compiler tutorials stop at parsing, or they jump straight to a full product
 - Types: `int`, `float`, `bool`, `void`
 - Global and local variables, arrays
 - Functions with parameters and return values
-- Arithmetic `+ - * / %`, relational `< <= > >= == !=`, logical `&& || !`, increment and decrement `++ --`
+- Arithmetic `+ - * / %` and unary minus (`-x`), relational `< <= > >= == !=`, logical `&& || !`, increment and decrement `++ --`
 - Control flow: `if`/`else`, `while`, `for`, `switch`/`case`/`default`, `break`, `return`
 - I/O: `printf`, `scanf`
 

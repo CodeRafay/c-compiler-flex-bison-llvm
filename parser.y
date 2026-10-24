@@ -630,6 +630,12 @@ expr:
         printf("Expanding rule: expr → NOT expr (line %d)\n", yylineno);
         $$ = generateLogicalIR("!", $2, nullptr);
     }
+    | MINUS expr %prec NOT {
+        // Unary minus (-x). %prec NOT gives it the same high precedence as
+        // '!', so -a * b means (-a) * b, not -(a * b).
+        printf("Expanding rule: expr → MINUS expr (line %d)\n", yylineno);
+        $$ = generateNegateIR($2);
+    }
     | expr EQ expr {
         printf("Expanding rule: expr → expr EQ expr (line %d)\n", yylineno);
         $$ = generateRelationalIR("==", $1, $3);

@@ -79,8 +79,11 @@ int return_token(int token) {
 %option yylineno
 
 /* Regular expression definitions */
-DIGIT   -?[0-9]+
-FLOATNUM -?[0-9]*\.[0-9]+
+/* Numbers never include a sign. In "x-1" the lexer can't tell whether '-'
+   means subtraction or a negative number, but the parser can, so '-' is
+   always returned as MINUS and the grammar handles unary minus. */
+DIGIT   [0-9]+
+FLOATNUM [0-9]*\.[0-9]+
 ID      [a-zA-Z_][a-zA-Z0-9_]*
 WS      [ \t]+
 NEWLINE \n
