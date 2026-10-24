@@ -39,7 +39,7 @@ Most compiler tutorials stop at parsing, or they jump straight to a full product
 
 **Language**
 - Types: `int`, `float`, `bool`, `void`
-- Global and local variables, arrays
+- Global and local variables, one-dimensional arrays with compile-time bounds checks for constant indices
 - Functions with parameters and return values
 - Arithmetic `+ - * / %` and unary minus (`-x`), relational `< <= > >= == !=`, logical `&& || !`, increment and decrement `++ --`
 - Control flow: `if`/`else`, `while`, `for`, `switch`/`case`/`default`, `break`, `return`
@@ -173,7 +173,7 @@ This is an active learning project. The front end is complete; code generation i
 | IR: `if` / `else` | 🔴 Fails LLVM module verification |
 | IR: `while` / `for` | 🔴 Loop condition isn't re-evaluated |
 | IR: `switch` | 🟡 Untested |
-| Arrays | 🔴 Lexer does not recognize `[` `]` yet |
+| Arrays (`int a[10]`, `a[i]`, local and global) | ✅ Working and verified with `lli` |
 
 ## Roadmap
 

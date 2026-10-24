@@ -203,6 +203,56 @@ llvm::Value* generateArrayDeclIR(const std::string& name, SymbolType type, int s
     return builder.CreateAlloca(arrayType, nullptr, name);
 }
 
+// An array variable is a pointer to a whole [N x type] block of memory.
+// Returns that array type, or nullptr if the variable is not an array.
+static llvm::ArrayType* getArrayType(llvm::Value* var) {
+    llvm::Type* t = nullptr;
+    if (auto* alloca = llvm::dyn_cast_or_null<llvm::AllocaInst>(var)) {
+        t = alloca->getAllocatedType();
+    } else if (auto* global = llvm::dyn_cast_or_null<llvm::GlobalVariable>(var)) {
+        t = global->getValueType();
+    }
+    return t ? llvm::dyn_cast<llvm::ArrayType>(t) : nullptr;
+}
+
+bool isArrayVariable(llvm::Value* var) {
+    return getArrayType(var) != nullptr;
+}
+
+int getArraySize(llvm::Value* var) {
+    llvm::ArrayType* arrayType = getArrayType(var);
+    return arrayType ? (int)arrayType->getNumElements() : 0;
+}
+
+// Address of arr[index]. GEP ("get element pointer") takes two indices here:
+// the first (0) steps through the pointer to the array itself, the second
+// picks the element inside it. GEP only computes the address; it doesn't
+// read or write memory.
+llvm::Value* getArrayElementPtrIR(llvm::Value* array, llvm::Value* index) {
+    std::cout << "DEBUG: Generating array element address\n";
+    llvm::ArrayType* arrayType = getArrayType(array);
+    if (!arrayType || !index) {
+        return nullptr;
+    }
+    llvm::Value* zero = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
+    return builder.CreateInBoundsGEP(arrayType, array, {zero, index}, "elemptr");
+}
+
+llvm::Value* generateArrayLoadIR(llvm::Value* array, llvm::Value* index) {
+    llvm::Value* ptr = getArrayElementPtrIR(array, index);
+    if (!ptr) {
+        return nullptr;
+    }
+    return builder.CreateLoad(getArrayType(array)->getElementType(), ptr, "elem");
+}
+
+void generateArrayStoreIR(llvm::Value* array, llvm::Value* index, llvm::Value* value) {
+    llvm::Value* ptr = getArrayElementPtrIR(array, index);
+    if (ptr && value) {
+        builder.CreateStore(value, ptr);
+    }
+}
+
 llvm::Value* generateExprIR(SymbolType exprType, const std::string& op, llvm::Value* lhs, llvm::Value* rhs, const std::string& ident, int number, float floatNum, bool boolVal) {
     std::cout << "DEBUG: Generating expr, op=" << op << ", ident=" << ident << ", number=" << number << std::endl;
     if (!op.empty() && lhs && rhs) {
