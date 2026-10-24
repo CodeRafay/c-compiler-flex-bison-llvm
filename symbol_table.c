@@ -74,6 +74,23 @@ void insertFunction(const char* name, SymbolType returnType, Param* params, int 
     symbolTable = sym;
 }
 
+// Called when a block or function ends: every variable declared at this
+// scope level (or deeper) is no longer visible, so remove it. Functions are
+// global (scope 0) and are never removed.
+void exitScope(int scope) {
+    Symbol** link = &symbolTable;
+    while (*link != NULL) {
+        Symbol* current = *link;
+        if (current->kind == VAR && current->scope >= scope) {
+            *link = current->next; // unlink, then free
+            free(current->name);
+            free(current);
+        } else {
+            link = &current->next;
+        }
+    }
+}
+
 int checkFunctionCallArgs(const char* funcName, Param* passedArgs) {
     Symbol* func = lookupFunction(funcName);
     if (!func) {

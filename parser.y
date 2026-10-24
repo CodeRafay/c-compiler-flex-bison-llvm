@@ -58,6 +58,7 @@ extern llvm::SwitchInst* currentSwitchInst;
 %type <param> arg_list
 %type <param> arg_list_opt
 %type <bb> switch_start
+%type <typeval> type_specifier
 
 %token INT FLOAT BOOL VOID RETURN MAIN PRINTF SCANF FOR IF ELSE WHILE SWITCH CASE TRUE FALSE BREAK DEFAULT
 %token LE LT GT GE EQ NEQ AND OR NOT INCR DECR COMMA ASSIGN
@@ -97,6 +98,17 @@ function_definition:
         initLLVM("my_module"); // Ensure module is initialized
         currentScope++;
         printf("DEBUG: Incremented scope to %d\n", currentScope);
+        // Use $1 (the return type), not currentType: parsing the parameters
+        // has already overwritten currentType with the last parameter's type.
+        printf("DEBUG: Calling generateFunctionIR for %s\n", $2);
+        llvm::Function* func = generateFunctionIR($2, $1, $4, true);
+        if (!func) {
+            printf("Error: Failed to generate function IR for '%s' (line %d)\n", $2, yylineno);
+            YYERROR;
+        }
+        // Parameters go into the symbol table only AFTER generateFunctionIR,
+        // because that is where each one gets its stack slot (alloca).
+        // Every later use of the parameter loads from temp->value.
         Param* temp = $4;
         while (temp != NULL) {
             if (temp->name == NULL) {
@@ -104,17 +116,11 @@ function_definition:
                 YYERROR;
             }
             printf("DEBUG: Inserting parameter %s, type=%d\n", temp->name, temp->type);
-            insertVariable(temp->name, temp->type, currentScope, nullptr);
+            insertVariable(temp->name, temp->type, currentScope, temp->value);
             temp = temp->next;
         }
-        printf("DEBUG: Calling generateFunctionIR for %s\n", $2);
-        llvm::Function* func = generateFunctionIR($2, currentType, $4, true);
-        if (!func) {
-            printf("Error: Failed to generate function IR for '%s' (line %d)\n", $2, yylineno);
-            YYERROR;
-        }
         printf("DEBUG: Inserting function %s\n", $2);
-        insertFunction($2, currentType, $4, 1, func);
+        insertFunction($2, $1, $4, 1, func);
         currentScope++;
         printf("DEBUG: Incremented scope to %d\n", currentScope);
         // Save current insert point and set to function's entry block
@@ -127,28 +133,35 @@ function_definition:
     compound_stmt
     {
         printf("Expanding rule: function_definition → type_specifier main_or_id LPAREN parameter_list_opt RPAREN compound_stmt (line %d)\n", yylineno);
+        // If the body falls off the end without a return, add one ourselves.
+        // This must happen BEFORE restoring the old insert point, otherwise we
+        // would be checking the previous function's block instead of this one.
+        llvm::BasicBlock* currentBB = builder.GetInsertBlock();
+        if (!currentBB->getTerminator()) {
+            llvm::Type* retType = currentBB->getParent()->getReturnType();
+            if (retType->isVoidTy()) {
+                builder.CreateRetVoid();
+            } else {
+                // Default return value: 0 / 0.0 / false, matching the return type
+                builder.CreateRet(llvm::Constant::getNullValue(retType));
+            }
+        }
         // Restore previous insert point
         if ($<bb>6) {
             builder.SetInsertPoint($<bb>6);
         }
-        // Ensure function has a terminator in the current block
-        llvm::BasicBlock* currentBB = builder.GetInsertBlock();
-        if (!currentBB->getTerminator()) {
-            if (currentType == TYPE_VOID) {
-                builder.CreateRetVoid();
-            } else {
-                builder.CreateRet(llvm::ConstantInt::get(context, llvm::APInt(32, 0)));
-            }
-        }
         currentScope -= 2;
+        // Parameters live in currentScope + 1; drop them so the next
+        // function can reuse the same names.
+        exitScope(currentScope + 1);
         printf("DEBUG: Exiting function_definition, scope=%d\n", currentScope);
     }
     | type_specifier main_or_id LPAREN parameter_list_opt RPAREN SEMI
     {
         printf("Expanding rule: function_definition → type_specifier main_or_id LPAREN parameter_list_opt RPAREN SEMI (line %d)\n", yylineno);
         initLLVM("my_module"); // Ensure module is initialized for declarations
-        llvm::Function* func = generateFunctionIR($2, currentType, $4, false);
-        insertFunction($2, currentType, $4, 0, func);
+        llvm::Function* func = generateFunctionIR($2, $1, $4, false);
+        insertFunction($2, $1, $4, 0, func);
     }
     ;
 
@@ -164,10 +177,10 @@ main_or_id:
     ;
 
 type_specifier:
-    INT { printf("Expanding rule: type_specifier → INT (line %d)\n", yylineno); currentType = TYPE_INT; }
-    | FLOAT { printf("Expanding rule: type_specifier → FLOAT (line %d)\n", yylineno); currentType = TYPE_FLOAT; }
-    | BOOL { printf("Expanding rule: type_specifier → BOOL (line %d)\n", yylineno); currentType = TYPE_BOOL; }
-    | VOID { printf("Expanding rule: type_specifier → VOID (line %d)\n", yylineno); currentType = TYPE_VOID; }
+    INT { printf("Expanding rule: type_specifier → INT (line %d)\n", yylineno); currentType = TYPE_INT; $$ = TYPE_INT; }
+    | FLOAT { printf("Expanding rule: type_specifier → FLOAT (line %d)\n", yylineno); currentType = TYPE_FLOAT; $$ = TYPE_FLOAT; }
+    | BOOL { printf("Expanding rule: type_specifier → BOOL (line %d)\n", yylineno); currentType = TYPE_BOOL; $$ = TYPE_BOOL; }
+    | VOID { printf("Expanding rule: type_specifier → VOID (line %d)\n", yylineno); currentType = TYPE_VOID; $$ = TYPE_VOID; }
     ;
 
 parameter_list_opt:
@@ -207,8 +220,10 @@ compound_stmt:
         currentScope++; 
         printf("DEBUG: Entering compound_stmt, scope=%d (line %d)\n", currentScope, yylineno);
     } stmt_list_opt RBRACE { 
-        printf("Expanding rule: compound_stmt → LBRACE stmt_list_opt RBRACE (line %d)\n", yylineno); 
-        currentScope--; 
+        printf("Expanding rule: compound_stmt → LBRACE stmt_list_opt RBRACE (line %d)\n", yylineno);
+        // Variables declared inside this block go out of scope here
+        exitScope(currentScope);
+        currentScope--;
         printf("DEBUG: Exiting compound_stmt, scope=%d\n", currentScope);
         $$ = nullptr;
     }

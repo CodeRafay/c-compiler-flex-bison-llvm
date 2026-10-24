@@ -96,13 +96,25 @@ llvm::Function* generateFunctionIR(const std::string& name, SymbolType returnTyp
         return nullptr;
     }
 
-    llvm::Function* function = llvm::Function::Create(
-        funcType,
-        llvm::Function::ExternalLinkage,
-        name,
-        module
-    );
-    std::cout << "DEBUG: Created function " << name << std::endl;
+    // A prototype like "int f();" may already have created this function.
+    // Reuse it so calls made before the definition point at the same @f.
+    // (Creating it again would make LLVM rename the new one to @f.1.)
+    llvm::Function* function = module->getFunction(name);
+    if (function) {
+        if (!function->empty()) {
+            std::cerr << "ERROR: Function " << name << " already has a body\n";
+            return nullptr;
+        }
+        std::cout << "DEBUG: Reusing earlier declaration of " << name << std::endl;
+    } else {
+        function = llvm::Function::Create(
+            funcType,
+            llvm::Function::ExternalLinkage,
+            name,
+            module
+        );
+        std::cout << "DEBUG: Created function " << name << std::endl;
+    }
 
     if (!isDefined) {
         std::cout << "DEBUG: Returning function declaration\n";
@@ -258,6 +270,10 @@ llvm::Value* generateFunctionCallIR(const std::string& name, Param* args) {
     while (current) {
         argValues.push_back(current->value);
         current = current->next;
+    }
+    // A void call produces no value, and LLVM does not allow naming it
+    if (func->getReturnType()->isVoidTy()) {
+        return builder.CreateCall(func, argValues);
     }
     return builder.CreateCall(func, argValues, name + "_call");
 }

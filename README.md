@@ -168,7 +168,7 @@ This is an active learning project. The front end is complete; code generation i
 | Parser | ✅ Working |
 | Semantic analysis | ✅ Working |
 | IR: expressions, variables, assignment | ✅ Working and verified with `lli` |
-| IR: functions | 🟡 IR generated; calls need more testing |
+| IR: functions (params, calls, prototypes) | ✅ Working and verified with `lli` |
 | IR: `if` / `else` | 🔴 Fails LLVM module verification |
 | IR: `while` / `for` | 🔴 Loop condition isn't re-evaluated |
 | IR: `switch` | 🟡 Untested |

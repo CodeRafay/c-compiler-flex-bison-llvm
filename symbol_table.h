@@ -41,6 +41,7 @@ Symbol* lookup(const char* name);
 Symbol* lookupFunction(const char* name);
 void insertVariable(const char* name, SymbolType type, int scope, llvm::Value* value);
 void insertFunction(const char* name, SymbolType returnType, Param* params, int isDefinition, llvm::Function* function);
+void exitScope(int scope);
 int checkFunctionCallArgs(const char* funcName, Param* passedArgs);
 void printSymbolTable();
 void freeSymbolTable();
