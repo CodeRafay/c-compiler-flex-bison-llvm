@@ -1,4 +1,5 @@
 #include "llvm_ir.h"
+#include "debug.h"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/Constants.h>
@@ -25,15 +26,15 @@ static void startBlockAfterJump() {
 
 void initLLVM(const std::string& moduleName) {
     if (module) {
-        std::cout << "DEBUG: Module already initialized, skipping\n";
+        if (verbose) std::cout << "DEBUG: Module already initialized, skipping\n";
         return;
     }
     module = new llvm::Module(moduleName, context);
-    std::cout << "Initialized LLVM module: " << moduleName << std::endl;
+    if (verbose) std::cout << "Initialized LLVM module: " << moduleName << std::endl;
 }
 
 llvm::Type* getLLVMType(SymbolType type) {
-    std::cout << "DEBUG: Getting LLVM type for SymbolType " << type << std::endl;
+    if (verbose) std::cout << "DEBUG: Getting LLVM type for SymbolType " << type << std::endl;
     switch (type) {
         case TYPE_INT: return llvm::Type::getInt32Ty(context);
         case TYPE_FLOAT: return llvm::Type::getFloatTy(context);
@@ -83,7 +84,7 @@ llvm::Function* getScanfFunction() {
 }
 
 llvm::Function* generateFunctionIR(const std::string& name, SymbolType returnType, Param* params, bool isDefined) {
-    std::cout << "DEBUG: generateFunctionIR for " << name << ", isDefined=" << isDefined << std::endl;
+    if (verbose) std::cout << "DEBUG: generateFunctionIR for " << name << ", isDefined=" << isDefined << std::endl;
     if (!module) {
         std::cerr << "ERROR: Module is null in generateFunctionIR\n";
         return nullptr;
@@ -92,9 +93,9 @@ llvm::Function* generateFunctionIR(const std::string& name, SymbolType returnTyp
     Param* current = params;
     while (current) {
         if (current->name) {
-            std::cout << "DEBUG: Parameter " << current->name << ", type=" << current->type << std::endl;
+            if (verbose) std::cout << "DEBUG: Parameter " << current->name << ", type=" << current->type << std::endl;
         } else {
-            std::cout << "DEBUG: Parameter (no name), type=" << current->type << std::endl;
+            if (verbose) std::cout << "DEBUG: Parameter (no name), type=" << current->type << std::endl;
         }
         llvm::Type* paramType = getLLVMType(current->type);
         if (!paramType) {
@@ -129,7 +130,7 @@ llvm::Function* generateFunctionIR(const std::string& name, SymbolType returnTyp
             std::cerr << "ERROR: Conflicting types for function " << name << std::endl;
             return nullptr;
         }
-        std::cout << "DEBUG: Reusing earlier declaration of " << name << std::endl;
+        if (verbose) std::cout << "DEBUG: Reusing earlier declaration of " << name << std::endl;
     } else {
         function = llvm::Function::Create(
             funcType,
@@ -137,16 +138,16 @@ llvm::Function* generateFunctionIR(const std::string& name, SymbolType returnTyp
             name,
             module
         );
-        std::cout << "DEBUG: Created function " << name << std::endl;
+        if (verbose) std::cout << "DEBUG: Created function " << name << std::endl;
     }
 
     if (!isDefined) {
-        std::cout << "DEBUG: Returning function declaration\n";
+        if (verbose) std::cout << "DEBUG: Returning function declaration\n";
         return function; // Declaration only
     }
 
     llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", function);
-    std::cout << "DEBUG: Created entry block for " << name << std::endl;
+    if (verbose) std::cout << "DEBUG: Created entry block for " << name << std::endl;
     builder.SetInsertPoint(entry);
 
     // Allocate and store parameters
@@ -161,7 +162,7 @@ llvm::Function* generateFunctionIR(const std::string& name, SymbolType returnTyp
         llvm::AllocaInst* alloca = builder.CreateAlloca(getLLVMType(current->type), nullptr, current->name);
         builder.CreateStore(&*argIt, alloca);
         current->value = alloca;
-        std::cout << "Stored parameter " << current->name << " in function " << name << std::endl;
+        if (verbose) std::cout << "Stored parameter " << current->name << " in function " << name << std::endl;
         current = current->next;
         ++argIt;
     }
@@ -171,7 +172,7 @@ llvm::Function* generateFunctionIR(const std::string& name, SymbolType returnTyp
         return nullptr;
     }
 
-    std::cout << "DEBUG: Function " << name << " generated successfully\n";
+    if (verbose) std::cout << "DEBUG: Function " << name << " generated successfully\n";
     return function;
 }
 
@@ -188,7 +189,7 @@ static llvm::AllocaInst* createEntryBlockAlloca(llvm::Type* type, const std::str
 }
 
 llvm::Value* generateVariableDeclIR(const std::string& name, SymbolType type, int scope) {
-    std::cout << "DEBUG: Generating variable decl for " << name << ", scope=" << scope << std::endl;
+    if (verbose) std::cout << "DEBUG: Generating variable decl for " << name << ", scope=" << scope << std::endl;
     llvm::Type* llvmType = getLLVMType(type);
     if (!llvmType) {
         std::cerr << "ERROR: Invalid type for variable " << name << std::endl;
@@ -227,7 +228,7 @@ bool insideFunction() {
 }
 
 llvm::Value* generateArrayDeclIR(const std::string& name, SymbolType type, int size, int scope) {
-    std::cout << "DEBUG: Generating array decl for " << name << ", size=" << size << ", scope=" << scope << std::endl;
+    if (verbose) std::cout << "DEBUG: Generating array decl for " << name << ", size=" << size << ", scope=" << scope << std::endl;
     llvm::Type* elementType = getLLVMType(type);
     if (!elementType) {
         std::cerr << "ERROR: Invalid type for array " << name << std::endl;
@@ -249,7 +250,7 @@ llvm::Value* generateArrayDeclIR(const std::string& name, SymbolType type, int s
 // picks the element inside it. GEP only computes the address; it doesn't
 // read or write memory.
 llvm::Value* getArrayElementPtrIR(llvm::Value* array, SymbolType elemType, int size, llvm::Value* index) {
-    std::cout << "DEBUG: Generating array element address\n";
+    if (verbose) std::cout << "DEBUG: Generating array element address\n";
     if (!array || !index) {
         return nullptr;
     }
@@ -274,7 +275,7 @@ void generateArrayStoreIR(llvm::Value* array, SymbolType elemType, int size, llv
 }
 
 llvm::Value* generateExprIR(SymbolType exprType, const std::string& op, llvm::Value* lhs, llvm::Value* rhs, const std::string& ident, int number, float floatNum, bool boolVal) {
-    std::cout << "DEBUG: Generating expr, op=" << op << ", ident=" << ident << ", number=" << number << std::endl;
+    if (verbose) std::cout << "DEBUG: Generating expr, op=" << op << ", ident=" << ident << ", number=" << number << std::endl;
     if (!op.empty() && lhs && rhs) {
         if (exprType == TYPE_INT) {
             if (op == "+") return builder.CreateAdd(lhs, rhs, "addtmp");
@@ -296,7 +297,7 @@ llvm::Value* generateExprIR(SymbolType exprType, const std::string& op, llvm::Va
             return nullptr;
         }
         if (sym && sym->kind == VAR) {
-            std::cout << "DEBUG: Loading variable " << ident << std::endl;
+            if (verbose) std::cout << "DEBUG: Loading variable " << ident << std::endl;
             return builder.CreateLoad(getLLVMType(sym->type), sym->value, ident);
         }
         std::cerr << "ERROR: Variable " << ident << " not found or not a variable\n";
@@ -312,7 +313,7 @@ llvm::Value* generateExprIR(SymbolType exprType, const std::string& op, llvm::Va
 }
 
 llvm::Value* generateNegateIR(llvm::Value* value) {
-    std::cout << "DEBUG: Generating negation\n";
+    if (verbose) std::cout << "DEBUG: Generating negation\n";
     if (!value) {
         return nullptr;
     }
@@ -324,7 +325,7 @@ llvm::Value* generateNegateIR(llvm::Value* value) {
 }
 
 llvm::Value* generateLogicalIR(const std::string& op, llvm::Value* lhs, llvm::Value* rhs) {
-    std::cout << "DEBUG: Generating logical op " << op << std::endl;
+    if (verbose) std::cout << "DEBUG: Generating logical op " << op << std::endl;
     if (!lhs || (op != "!" && !rhs)) {
         return nullptr; // an operand already had an error (e.g. undeclared variable)
     }
@@ -340,7 +341,7 @@ llvm::Value* generateLogicalIR(const std::string& op, llvm::Value* lhs, llvm::Va
 }
 
 llvm::Value* generateRelationalIR(const std::string& op, llvm::Value* lhs, llvm::Value* rhs) {
-    std::cout << "DEBUG: Generating relational op " << op << std::endl;
+    if (verbose) std::cout << "DEBUG: Generating relational op " << op << std::endl;
     if (!lhs || !rhs) {
         return nullptr; // an operand already had an error (e.g. undeclared variable)
     }
@@ -364,7 +365,7 @@ llvm::Value* generateRelationalIR(const std::string& op, llvm::Value* lhs, llvm:
 }
 
 void generateAssignIR(const std::string& ident, llvm::Value* value) {
-    std::cout << "DEBUG: Generating assign for " << ident << std::endl;
+    if (verbose) std::cout << "DEBUG: Generating assign for " << ident << std::endl;
     Symbol* sym = lookup(ident.c_str());
     if (sym && sym->kind == VAR) {
         builder.CreateStore(value, sym->value);
@@ -374,7 +375,7 @@ void generateAssignIR(const std::string& ident, llvm::Value* value) {
 }
 
 void generateReturnIR(llvm::Value* value) {
-    std::cout << "DEBUG: Generating return\n";
+    if (verbose) std::cout << "DEBUG: Generating return\n";
     if (value) {
         builder.CreateRet(value);
     } else {
@@ -384,7 +385,7 @@ void generateReturnIR(llvm::Value* value) {
 }
 
 llvm::Value* generateFunctionCallIR(const std::string& name, Param* args) {
-    std::cout << "DEBUG: Generating function call for " << name << std::endl;
+    if (verbose) std::cout << "DEBUG: Generating function call for " << name << std::endl;
     llvm::Function* func = module->getFunction(name);
     if (!func) {
         std::cerr << "Error: Function '" << name << "' not found" << std::endl;
@@ -408,7 +409,7 @@ llvm::Value* generateFunctionCallIR(const std::string& name, Param* args) {
 }
 
 void generatePrintfIR(const std::string& format, const std::vector<llvm::Value*>& args) {
-    std::cout << "DEBUG: Generating printf with format \"" << format << "\"\n";
+    if (verbose) std::cout << "DEBUG: Generating printf with format \"" << format << "\"\n";
     llvm::Function* printfFunc = getPrintfFunction();
     std::vector<llvm::Value*> callArgs;
     callArgs.push_back(builder.CreateGlobalStringPtr(format, "format"));
@@ -428,7 +429,7 @@ void generatePrintfIR(const std::string& format, const std::vector<llvm::Value*>
 }
 
 void generateScanfIR(const std::string& ident, SymbolType type) {
-    std::cout << "DEBUG: Generating scanf for " << ident << std::endl;
+    if (verbose) std::cout << "DEBUG: Generating scanf for " << ident << std::endl;
     llvm::Function* scanfFunc = getScanfFunction();
     Symbol* sym = lookup(ident.c_str());
     if (!sym) {
@@ -479,7 +480,7 @@ static void branchIfOpen(llvm::BasicBlock* dest) {
 // false edge of the branch goes to "merge" for now. If an else shows up,
 // generateIfElseIR patches it (this is called backpatching).
 IfBlocks* generateIfStartIR(llvm::Value* cond) {
-    std::cout << "DEBUG: Generating if start\n";
+    if (verbose) std::cout << "DEBUG: Generating if start\n";
     if (!cond) {
         return nullptr;
     }
@@ -497,7 +498,7 @@ IfBlocks* generateIfStartIR(llvm::Value* cond) {
 
 // Called when "else" is seen: finish the then-body and start the else-body.
 void generateIfElseIR(IfBlocks* blocks) {
-    std::cout << "DEBUG: Generating else\n";
+    if (verbose) std::cout << "DEBUG: Generating else\n";
     if (!blocks) {
         return;
     }
@@ -513,7 +514,7 @@ void generateIfElseIR(IfBlocks* blocks) {
 
 // Called at the very end of the if statement: both paths meet in "merge".
 void generateIfEndIR(IfBlocks* blocks) {
-    std::cout << "DEBUG: Generating if end\n";
+    if (verbose) std::cout << "DEBUG: Generating if end\n";
     if (!blocks) {
         return;
     }
@@ -537,7 +538,7 @@ void generateIfEndIR(IfBlocks* blocks) {
 // Called before the condition is parsed. The condition gets its own block,
 // so jumping back to it re-evaluates the condition on every iteration.
 LoopBlocks* generateLoopStartIR() {
-    std::cout << "DEBUG: Generating loop start\n";
+    if (verbose) std::cout << "DEBUG: Generating loop start\n";
     llvm::Function* func = builder.GetInsertBlock()->getParent();
     LoopBlocks* loop = new LoopBlocks;
     loop->condBB = llvm::BasicBlock::Create(context, "loop.cond", func);
@@ -553,7 +554,7 @@ LoopBlocks* generateLoopStartIR() {
 // For a for loop, the update (i++) is parsed next, BEFORE the body, even
 // though it must run AFTER the body. So we send it to its own for.step block.
 void generateLoopCondIR(LoopBlocks* loop, llvm::Value* cond, bool hasStep) {
-    std::cout << "DEBUG: Generating loop condition\n";
+    if (verbose) std::cout << "DEBUG: Generating loop condition\n";
     llvm::Function* func = builder.GetInsertBlock()->getParent();
     loop->bodyBB = llvm::BasicBlock::Create(context, "loop.body", func);
     if (hasStep) {
@@ -578,7 +579,7 @@ void generateLoopCondIR(LoopBlocks* loop, llvm::Value* cond, bool hasStep) {
 // for loops only: the update has been generated in for.step. Jump back to
 // the condition from there, then move on to the body.
 void generateForStepEndIR(LoopBlocks* loop) {
-    std::cout << "DEBUG: Generating for step end\n";
+    if (verbose) std::cout << "DEBUG: Generating for step end\n";
     builder.CreateBr(loop->condBB);
     builder.SetInsertPoint(loop->bodyBB);
 }
@@ -586,7 +587,7 @@ void generateForStepEndIR(LoopBlocks* loop) {
 // Called after the body: go round again (through the step for a for loop),
 // then continue with the code after the loop.
 void generateLoopEndIR(LoopBlocks* loop) {
-    std::cout << "DEBUG: Generating loop end\n";
+    if (verbose) std::cout << "DEBUG: Generating loop end\n";
     branchIfOpen(loop->stepBB ? loop->stepBB : loop->condBB);
     breakTargets.pop_back();
     continueTargets.pop_back();
@@ -600,7 +601,7 @@ void generateLoopEndIR(LoopBlocks* loop) {
 // break: jump out of the innermost loop or switch.
 // Returns false if there is no loop or switch around it.
 bool generateBreakIR() {
-    std::cout << "DEBUG: Generating break\n";
+    if (verbose) std::cout << "DEBUG: Generating break\n";
     if (breakTargets.empty()) {
         return false;
     }
@@ -613,7 +614,7 @@ bool generateBreakIR() {
 // (A switch has no continue target, so continue inside a switch inside a
 // loop correctly goes to the loop.) Returns false if there is no loop.
 bool generateContinueIR() {
-    std::cout << "DEBUG: Generating continue\n";
+    if (verbose) std::cout << "DEBUG: Generating continue\n";
     if (continueTargets.empty()) {
         return false;
     }
@@ -636,7 +637,7 @@ std::vector<SwitchInfo*> switchStack;
 // Called right after "switch (value)". Until a default label appears, the
 // switch's default destination is the code after the switch.
 void generateSwitchStartIR(llvm::Value* value) {
-    std::cout << "DEBUG: Generating switch start\n";
+    if (verbose) std::cout << "DEBUG: Generating switch start\n";
     SwitchInfo* info = new SwitchInfo;
     info->afterBB = llvm::BasicBlock::Create(context, "switch.after");
     info->sw = builder.CreateSwitch(value, info->afterBB);
@@ -654,7 +655,7 @@ static void startCaseBlock(llvm::BasicBlock* caseBB) {
 
 // "case value:". Returns 1 if this value was already used in the switch.
 int generateCaseIR(int value) {
-    std::cout << "DEBUG: Generating case " << value << std::endl;
+    if (verbose) std::cout << "DEBUG: Generating case " << value << std::endl;
     SwitchInfo* info = switchStack.back();
     llvm::ConstantInt* caseValue = llvm::ConstantInt::get(context, llvm::APInt(32, value, true));
     if (info->sw->findCaseValue(caseValue) != info->sw->case_default()) {
@@ -669,7 +670,7 @@ int generateCaseIR(int value) {
 
 // "default:". Returns 1 if the switch already has a default.
 int generateDefaultCaseIR() {
-    std::cout << "DEBUG: Generating default case\n";
+    if (verbose) std::cout << "DEBUG: Generating default case\n";
     SwitchInfo* info = switchStack.back();
     if (info->hasDefault) {
         return 1;
@@ -684,7 +685,7 @@ int generateDefaultCaseIR() {
 
 // Called at the closing brace: the last case falls out of the switch.
 void generateSwitchEndIR() {
-    std::cout << "DEBUG: Generating switch end\n";
+    if (verbose) std::cout << "DEBUG: Generating switch end\n";
     SwitchInfo* info = switchStack.back();
     branchIfOpen(info->afterBB);
     switchStack.pop_back();
@@ -697,12 +698,12 @@ void generateSwitchEndIR() {
 }
 
 bool writeIRToFile(const std::string& filename) {
-    std::cout << "DEBUG: Writing IR to " << filename << std::endl;
+    if (verbose) std::cout << "DEBUG: Writing IR to " << filename << std::endl;
     if (!module) {
         std::cerr << "Error: Module is null" << std::endl;
         return false;
     }
-    std::cerr << "Module function count: " << module->size() << std::endl;
+    if (verbose) std::cerr << "Module function count: " << module->size() << std::endl;
     if (llvm::verifyModule(*module, &llvm::errs())) {
         std::cerr << "Module verification failed" << std::endl;
         return false;
@@ -715,6 +716,6 @@ bool writeIRToFile(const std::string& filename) {
     }
     module->print(out, nullptr);
     out.close();
-    std::cout << "IR written to " << filename << std::endl;
+    if (verbose) std::cout << "IR written to " << filename << std::endl;
     return true;
 }

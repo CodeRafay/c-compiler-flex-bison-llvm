@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #include "symbol_table.h"
 #include "llvm_ir.h"
+#include "debug.h"
 
 extern FILE *yyin;
 extern int yylineno;
@@ -74,16 +75,16 @@ int currentScope = 0;
 program:
     declaration_or_function_list 
     {
-        printf("Expanding rule: program → declaration_or_function_list (line %d)\n", yylineno);
+        debugPrint("Expanding rule: program → declaration_or_function_list (line %d)\n", yylineno);
         // The IR is written by main() once we know there were no errors
     }
     ;
 
 declaration_or_function_list:
     declaration_or_function_list declaration_or_function 
-    { printf("Expanding rule: declaration_or_function_list → declaration_or_function_list declaration_or_function (line %d)\n", yylineno); }
+    { debugPrint("Expanding rule: declaration_or_function_list → declaration_or_function_list declaration_or_function (line %d)\n", yylineno); }
     | declaration_or_function 
-    { printf("Expanding rule: declaration_or_function_list → declaration_or_function (line %d)\n", yylineno); }
+    { debugPrint("Expanding rule: declaration_or_function_list → declaration_or_function (line %d)\n", yylineno); }
     ;
 
 declaration_or_function:
@@ -93,16 +94,16 @@ declaration_or_function:
 
 global_declaration:
     type_specifier var_list SEMI 
-    { printf("Expanding rule: global_declaration → type_specifier var_list SEMI (line %d)\n", yylineno); }
+    { debugPrint("Expanding rule: global_declaration → type_specifier var_list SEMI (line %d)\n", yylineno); }
     ;
 
 function_definition:
     type_specifier main_or_id LPAREN parameter_list_opt RPAREN 
     {
-        printf("DEBUG: Entering function_definition for %s, scope=%d\n", $2, currentScope);
+        debugPrint("DEBUG: Entering function_definition for %s, scope=%d\n", $2, currentScope);
         initLLVM("my_module"); // Ensure module is initialized
         currentScope++;
-        printf("DEBUG: Incremented scope to %d\n", currentScope);
+        debugPrint("DEBUG: Incremented scope to %d\n", currentScope);
         // A prototype may leave parameter names out (int add(int, int);),
         // but a definition can't: the body has no way to refer to them.
         int paramIndex = 1;
@@ -114,7 +115,7 @@ function_definition:
         }
         // Use $1 (the return type), not currentType: parsing the parameters
         // has already overwritten currentType with the last parameter's type.
-        printf("DEBUG: Calling generateFunctionIR for %s\n", $2);
+        debugPrint("DEBUG: Calling generateFunctionIR for %s\n", $2);
         llvm::Function* func = generateFunctionIR($2, $1, $4, true);
         if (!func) {
             reportError("Error: Failed to generate function IR for '%s' (line %d)\n", $2, yylineno);
@@ -125,17 +126,17 @@ function_definition:
         // Every later use of the parameter loads from temp->value.
         Param* temp = $4;
         while (temp != NULL) {
-            printf("DEBUG: Inserting parameter %s, type=%d\n", temp->name, temp->type);
+            debugPrint("DEBUG: Inserting parameter %s, type=%d\n", temp->name, temp->type);
             if (!insertVariable(temp->name, temp->type, currentScope, temp->value, 0)) {
                 reportError("Semantic Error: Duplicate parameter '%s' in function '%s' (line %d)\n", temp->name, $2, yylineno);
                 YYERROR;
             }
             temp = temp->next;
         }
-        printf("DEBUG: Inserting function %s\n", $2);
+        debugPrint("DEBUG: Inserting function %s\n", $2);
         insertFunction($2, $1, $4, 1, func);
         currentScope++;
-        printf("DEBUG: Incremented scope to %d\n", currentScope);
+        debugPrint("DEBUG: Incremented scope to %d\n", currentScope);
         // Start emitting instructions into the function's entry block
         llvm::BasicBlock* entry = &func->getEntryBlock();
         if (!entry->getTerminator()) {
@@ -144,7 +145,7 @@ function_definition:
     }
     compound_stmt
     {
-        printf("Expanding rule: function_definition → type_specifier main_or_id LPAREN parameter_list_opt RPAREN compound_stmt (line %d)\n", yylineno);
+        debugPrint("Expanding rule: function_definition → type_specifier main_or_id LPAREN parameter_list_opt RPAREN compound_stmt (line %d)\n", yylineno);
         // If the body falls off the end without a return, add one ourselves.
         llvm::BasicBlock* currentBB = builder.GetInsertBlock();
         if (!currentBB->getTerminator()) {
@@ -164,11 +165,11 @@ function_definition:
         // Parameters live in currentScope + 1; drop them so the next
         // function can reuse the same names.
         exitScope(currentScope + 1);
-        printf("DEBUG: Exiting function_definition, scope=%d\n", currentScope);
+        debugPrint("DEBUG: Exiting function_definition, scope=%d\n", currentScope);
     }
     | type_specifier main_or_id LPAREN parameter_list_opt RPAREN SEMI
     {
-        printf("Expanding rule: function_definition → type_specifier main_or_id LPAREN parameter_list_opt RPAREN SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: function_definition → type_specifier main_or_id LPAREN parameter_list_opt RPAREN SEMI (line %d)\n", yylineno);
         initLLVM("my_module"); // Ensure module is initialized for declarations
         llvm::Function* func = generateFunctionIR($2, $1, $4, false);
         insertFunction($2, $1, $4, 0, func);
@@ -178,30 +179,30 @@ function_definition:
 main_or_id:
     MAIN { 
         $$ = strdup("main");
-        printf("Expanding rule: main_or_id → MAIN (line %d)\n", yylineno);
+        debugPrint("Expanding rule: main_or_id → MAIN (line %d)\n", yylineno);
     }
     | IDENTIFIER { 
         $$ = strdup($1);
-        printf("Expanding rule: main_or_id → IDENTIFIER (line %d)\n", yylineno);
+        debugPrint("Expanding rule: main_or_id → IDENTIFIER (line %d)\n", yylineno);
     }
     ;
 
 type_specifier:
-    INT { printf("Expanding rule: type_specifier → INT (line %d)\n", yylineno); currentType = TYPE_INT; $$ = TYPE_INT; }
-    | FLOAT { printf("Expanding rule: type_specifier → FLOAT (line %d)\n", yylineno); currentType = TYPE_FLOAT; $$ = TYPE_FLOAT; }
-    | BOOL { printf("Expanding rule: type_specifier → BOOL (line %d)\n", yylineno); currentType = TYPE_BOOL; $$ = TYPE_BOOL; }
-    | VOID { printf("Expanding rule: type_specifier → VOID (line %d)\n", yylineno); currentType = TYPE_VOID; $$ = TYPE_VOID; }
+    INT { debugPrint("Expanding rule: type_specifier → INT (line %d)\n", yylineno); currentType = TYPE_INT; $$ = TYPE_INT; }
+    | FLOAT { debugPrint("Expanding rule: type_specifier → FLOAT (line %d)\n", yylineno); currentType = TYPE_FLOAT; $$ = TYPE_FLOAT; }
+    | BOOL { debugPrint("Expanding rule: type_specifier → BOOL (line %d)\n", yylineno); currentType = TYPE_BOOL; $$ = TYPE_BOOL; }
+    | VOID { debugPrint("Expanding rule: type_specifier → VOID (line %d)\n", yylineno); currentType = TYPE_VOID; $$ = TYPE_VOID; }
     ;
 
 parameter_list_opt:
-    /* empty */ { printf("Expanding rule: parameter_list_opt → /* empty */ (line %d)\n", yylineno); $$ = NULL; }
-    | parameter_list { printf("Expanding rule: parameter_list_opt → parameter_list (line %d)\n", yylineno); $$ = $1; }
+    /* empty */ { debugPrint("Expanding rule: parameter_list_opt → /* empty */ (line %d)\n", yylineno); $$ = NULL; }
+    | parameter_list { debugPrint("Expanding rule: parameter_list_opt → parameter_list (line %d)\n", yylineno); $$ = $1; }
     ;
 
 parameter_list:
-    parameter_declaration { printf("Expanding rule: parameter_list → parameter_declaration (line %d)\n", yylineno); $$ = $1; }
+    parameter_declaration { debugPrint("Expanding rule: parameter_list → parameter_declaration (line %d)\n", yylineno); $$ = $1; }
     | parameter_list COMMA parameter_declaration {
-        printf("Expanding rule: parameter_list → parameter_list COMMA parameter_declaration (line %d)\n", yylineno);
+        debugPrint("Expanding rule: parameter_list → parameter_list COMMA parameter_declaration (line %d)\n", yylineno);
         Param* temp = $1;
         while (temp->next) temp = temp->next;
         temp->next = $3;
@@ -211,7 +212,7 @@ parameter_list:
 
 parameter_declaration:
     type_specifier IDENTIFIER {
-        printf("Expanding rule: parameter_declaration → type_specifier IDENTIFIER (line %d)\n", yylineno);
+        debugPrint("Expanding rule: parameter_declaration → type_specifier IDENTIFIER (line %d)\n", yylineno);
         Param* p = (Param*)malloc(sizeof(Param));
         p->name = strdup($2);
         if (p->name == NULL) {
@@ -225,7 +226,7 @@ parameter_declaration:
     }
     | type_specifier {
         // Unnamed parameter, only allowed in prototypes: int add(int, int);
-        printf("Expanding rule: parameter_declaration → type_specifier (line %d)\n", yylineno);
+        debugPrint("Expanding rule: parameter_declaration → type_specifier (line %d)\n", yylineno);
         Param* p = (Param*)malloc(sizeof(Param));
         p->name = NULL;
         p->type = $1;
@@ -238,30 +239,30 @@ parameter_declaration:
 compound_stmt:
     LBRACE { 
         currentScope++; 
-        printf("DEBUG: Entering compound_stmt, scope=%d (line %d)\n", currentScope, yylineno);
+        debugPrint("DEBUG: Entering compound_stmt, scope=%d (line %d)\n", currentScope, yylineno);
     } stmt_list_opt RBRACE { 
-        printf("Expanding rule: compound_stmt → LBRACE stmt_list_opt RBRACE (line %d)\n", yylineno);
+        debugPrint("Expanding rule: compound_stmt → LBRACE stmt_list_opt RBRACE (line %d)\n", yylineno);
         // Variables declared inside this block go out of scope here
         exitScope(currentScope);
         currentScope--;
-        printf("DEBUG: Exiting compound_stmt, scope=%d\n", currentScope);
+        debugPrint("DEBUG: Exiting compound_stmt, scope=%d\n", currentScope);
         $$ = nullptr;
     }
     ;
 
 stmt_list_opt:
-    /* empty */ { printf("Expanding rule: stmt_list_opt → /* empty */ (line %d)\n", yylineno); }
-    | stmt_list { printf("Expanding rule: stmt_list_opt → stmt_list (line %d)\n", yylineno); }
+    /* empty */ { debugPrint("Expanding rule: stmt_list_opt → /* empty */ (line %d)\n", yylineno); }
+    | stmt_list { debugPrint("Expanding rule: stmt_list_opt → stmt_list (line %d)\n", yylineno); }
     ;
 
 stmt_list:
-    stmt_list stmt { printf("Expanding rule: stmt_list → stmt_list stmt (line %d)\n", yylineno); }
-    | stmt { printf("Expanding rule: stmt_list → stmt (line %d)\n", yylineno); }
+    stmt_list stmt { debugPrint("Expanding rule: stmt_list → stmt_list stmt (line %d)\n", yylineno); }
+    | stmt { debugPrint("Expanding rule: stmt_list → stmt (line %d)\n", yylineno); }
     ;
 
 stmt:
     IDENTIFIER ASSIGN expr SEMI {
-        printf("Expanding rule: stmt → IDENTIFIER ASSIGN expr SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → IDENTIFIER ASSIGN expr SEMI (line %d)\n", yylineno);
         Symbol* lhs = lookup($1);
         if (!lhs) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
@@ -276,7 +277,7 @@ stmt:
         $$ = nullptr;
     }
     | IDENTIFIER LBRACKET expr RBRACKET ASSIGN expr SEMI {
-        printf("Expanding rule: stmt → IDENTIFIER LBRACKET expr RBRACKET ASSIGN expr SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → IDENTIFIER LBRACKET expr RBRACKET ASSIGN expr SEMI (line %d)\n", yylineno);
         Symbol* sym = checkArrayAccess($1, $3);
         if (sym && $6) {
             // sym->type is the element type (int a[5] → TYPE_INT)
@@ -289,7 +290,7 @@ stmt:
         $$ = nullptr;
     }
     | IDENTIFIER INCR SEMI {
-        printf("Expanding rule: stmt → IDENTIFIER INCR SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → IDENTIFIER INCR SEMI (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
@@ -301,7 +302,7 @@ stmt:
         $$ = nullptr;
     }
     | IDENTIFIER DECR SEMI {
-        printf("Expanding rule: stmt → IDENTIFIER DECR SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → IDENTIFIER DECR SEMI (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
@@ -313,7 +314,7 @@ stmt:
         $$ = nullptr;
     }
     | INCR IDENTIFIER SEMI {
-        printf("Expanding rule: stmt → INCR IDENTIFIER SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → INCR IDENTIFIER SEMI (line %d)\n", yylineno);
         Symbol* sym = lookup($2);
         if (!sym) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $2, yylineno);
@@ -325,7 +326,7 @@ stmt:
         $$ = nullptr;
     }
     | DECR IDENTIFIER SEMI {
-        printf("Expanding rule: stmt → DECR IDENTIFIER SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → DECR IDENTIFIER SEMI (line %d)\n", yylineno);
         Symbol* sym = lookup($2);
         if (!sym) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $2, yylineno);
@@ -337,7 +338,7 @@ stmt:
         $$ = nullptr;
     }
     | IDENTIFIER LPAREN arg_list_opt RPAREN SEMI {
-        printf("Expanding rule: stmt → IDENTIFIER LPAREN arg_list_opt RPAREN SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → IDENTIFIER LPAREN arg_list_opt RPAREN SEMI (line %d)\n", yylineno);
         if (!checkFunctionCallArgs($1, $3)) {
             reportError("Semantic Error: Invalid arguments for function '%s' (line %d)\n", $1, yylineno);
         } else {
@@ -346,24 +347,24 @@ stmt:
         $$ = nullptr;
     }
     | PRINTF LPAREN arg_list RPAREN SEMI {
-        printf("Expanding rule: stmt → PRINTF LPAREN arg_list RPAREN SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → PRINTF LPAREN arg_list RPAREN SEMI (line %d)\n", yylineno);
         emitPrintf(NULL, $3);
         $$ = nullptr;
     }
     | PRINTF LPAREN STRING RPAREN SEMI {
-        printf("Expanding rule: stmt → PRINTF LPAREN STRING RPAREN SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → PRINTF LPAREN STRING RPAREN SEMI (line %d)\n", yylineno);
         emitPrintf($3, NULL);
         free($3);
         $$ = nullptr;
     }
     | PRINTF LPAREN STRING COMMA arg_list RPAREN SEMI {
-        printf("Expanding rule: stmt → PRINTF LPAREN STRING COMMA arg_list RPAREN SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → PRINTF LPAREN STRING COMMA arg_list RPAREN SEMI (line %d)\n", yylineno);
         emitPrintf($3, $5);
         free($3);
         $$ = nullptr;
     }
     | SCANF LPAREN IDENTIFIER RPAREN SEMI {
-        printf("Expanding rule: stmt → SCANF LPAREN IDENTIFIER RPAREN SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → SCANF LPAREN IDENTIFIER RPAREN SEMI (line %d)\n", yylineno);
         Symbol* sym = lookup($3);
         if (!sym) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $3, yylineno);
@@ -389,7 +390,7 @@ stmt:
     } update_expr RPAREN {
         generateForStepEndIR($<loop>6);
     } compound_stmt {
-        printf("Expanding rule: stmt → FOR LPAREN init_expr SEMI expr SEMI update_expr RPAREN compound_stmt (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → FOR LPAREN init_expr SEMI expr SEMI update_expr RPAREN compound_stmt (line %d)\n", yylineno);
         generateLoopEndIR($<loop>6);
         exitScope(currentScope);
         currentScope--;
@@ -403,44 +404,44 @@ stmt:
         }
         generateLoopCondIR($<loop>3, generateConditionIR($4), false);
     } compound_stmt {
-        printf("Expanding rule: stmt → WHILE LPAREN expr RPAREN compound_stmt (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → WHILE LPAREN expr RPAREN compound_stmt (line %d)\n", yylineno);
         generateLoopEndIR($<loop>3);
         $$ = nullptr;
     }
     | if_stmt {
-        printf("Expanding rule: stmt → if_stmt (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → if_stmt (line %d)\n", yylineno);
         $$ = nullptr;
     }
     | RETURN expr SEMI {
-        printf("Expanding rule: stmt → RETURN expr SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → RETURN expr SEMI (line %d)\n", yylineno);
         if (!$2) {
             reportError("Semantic Error: Invalid return expression (line %d)\n", yylineno);
             YYERROR;
         }
-        printf("Generating return for expr at %p\n", $2);
+        debugPrint("Generating return for expr at %p\n", $2);
         generateReturnIR($2);
         $$ = nullptr;
     }
     | switch_head LBRACE case_list RBRACE {
-        printf("Expanding rule: stmt → switch_head LBRACE case_list RBRACE (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → switch_head LBRACE case_list RBRACE (line %d)\n", yylineno);
         generateSwitchEndIR();
         $$ = nullptr;
     }
     | BREAK SEMI {
-        printf("Expanding rule: stmt → BREAK SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → BREAK SEMI (line %d)\n", yylineno);
         if (!generateBreakIR()) {
             reportError("Semantic Error: 'break' is only allowed inside a loop or switch (line %d)\n", yylineno);
         }
         $$ = nullptr;
     }
     | CONTINUE SEMI {
-        printf("Expanding rule: stmt → CONTINUE SEMI (line %d)\n", yylineno);
+        debugPrint("Expanding rule: stmt → CONTINUE SEMI (line %d)\n", yylineno);
         if (!generateContinueIR()) {
             reportError("Semantic Error: 'continue' is only allowed inside a loop (line %d)\n", yylineno);
         }
         $$ = nullptr;
     }
-    | declaration SEMI { printf("Expanding rule: stmt → declaration SEMI (line %d)\n", yylineno); $$ = nullptr; }
+    | declaration SEMI { debugPrint("Expanding rule: stmt → declaration SEMI (line %d)\n", yylineno); $$ = nullptr; }
     ;
 
 /* if / else
@@ -451,7 +452,7 @@ stmt:
    and sets up the blocks; the body is then generated inside "then". */
 if_head:
     IF LPAREN expr RPAREN {
-        printf("Expanding rule: if_head → IF LPAREN expr RPAREN (line %d)\n", yylineno);
+        debugPrint("Expanding rule: if_head → IF LPAREN expr RPAREN (line %d)\n", yylineno);
         if (!$3) {
             reportError("Semantic Error: Invalid condition in if statement (line %d)\n", yylineno);
             $$ = nullptr;
@@ -463,28 +464,28 @@ if_head:
 
 if_stmt:
     if_head compound_stmt %prec THEN {
-        printf("Expanding rule: if_stmt → if_head compound_stmt (line %d)\n", yylineno);
+        debugPrint("Expanding rule: if_stmt → if_head compound_stmt (line %d)\n", yylineno);
         generateIfEndIR($1);
     }
     | if_head compound_stmt ELSE {
         // Mid-rule action: runs as soon as "else" is read, before the else-body
         generateIfElseIR($1);
     } else_body {
-        printf("Expanding rule: if_stmt → if_head compound_stmt ELSE else_body (line %d)\n", yylineno);
+        debugPrint("Expanding rule: if_stmt → if_head compound_stmt ELSE else_body (line %d)\n", yylineno);
         generateIfEndIR($1);
     }
     ;
 
 else_body:
-    compound_stmt { printf("Expanding rule: else_body → compound_stmt (line %d)\n", yylineno); }
-    | if_stmt { printf("Expanding rule: else_body → if_stmt (line %d)\n", yylineno); } /* else if */
+    compound_stmt { debugPrint("Expanding rule: else_body → compound_stmt (line %d)\n", yylineno); }
+    | if_stmt { debugPrint("Expanding rule: else_body → if_stmt (line %d)\n", yylineno); } /* else if */
     ;
 
 /* switch: like if_head, switch_head reduces right after "switch (value)",
    before any case, and emits the switch instruction. */
 switch_head:
     SWITCH LPAREN expr RPAREN {
-        printf("Expanding rule: switch_head → SWITCH LPAREN expr RPAREN (line %d)\n", yylineno);
+        debugPrint("Expanding rule: switch_head → SWITCH LPAREN expr RPAREN (line %d)\n", yylineno);
         llvm::Value* value = $3;
         if (!value) {
             reportError("Semantic Error: Invalid switch expression (line %d)\n", yylineno);
@@ -503,11 +504,11 @@ switch_head:
 
 init_expr:
     declaration {
-        printf("Expanding rule: init_expr → declaration (line %d)\n", yylineno);
+        debugPrint("Expanding rule: init_expr → declaration (line %d)\n", yylineno);
         $$ = nullptr;
     }
     | IDENTIFIER ASSIGN expr {
-        printf("Expanding rule: init_expr → IDENTIFIER ASSIGN expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: init_expr → IDENTIFIER ASSIGN expr (line %d)\n", yylineno);
         Symbol* lhs = lookup($1);
         if (!lhs) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
@@ -521,7 +522,7 @@ init_expr:
 
 update_expr:
     IDENTIFIER INCR {
-        printf("Expanding rule: update_expr → IDENTIFIER INCR (line %d)\n", yylineno);
+        debugPrint("Expanding rule: update_expr → IDENTIFIER INCR (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
@@ -534,7 +535,7 @@ update_expr:
         }
     }
     | IDENTIFIER DECR {
-        printf("Expanding rule: update_expr → IDENTIFIER DECR (line %d)\n", yylineno);
+        debugPrint("Expanding rule: update_expr → IDENTIFIER DECR (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
@@ -547,7 +548,7 @@ update_expr:
         }
     }
     | IDENTIFIER ASSIGN expr {
-        printf("Expanding rule: update_expr → IDENTIFIER ASSIGN expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: update_expr → IDENTIFIER ASSIGN expr (line %d)\n", yylineno);
         Symbol* lhs = lookup($1);
         if (!lhs) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
@@ -560,17 +561,17 @@ update_expr:
     ;
 
 declaration:
-    type_specifier var_list { printf("Expanding rule: declaration → type_specifier var_list (line %d)\n", yylineno); }
+    type_specifier var_list { debugPrint("Expanding rule: declaration → type_specifier var_list (line %d)\n", yylineno); }
     ;
 
 var_list:
-    var_decl { printf("Expanding rule: var_list → var_decl (line %d)\n", yylineno); }
-    | var_list COMMA var_decl { printf("Expanding rule: var_list → var_list COMMA var_decl (line %d)\n", yylineno); }
+    var_decl { debugPrint("Expanding rule: var_list → var_decl (line %d)\n", yylineno); }
+    | var_list COMMA var_decl { debugPrint("Expanding rule: var_list → var_list COMMA var_decl (line %d)\n", yylineno); }
     ;
 
 var_decl:
     IDENTIFIER {
-        printf("Expanding rule: var_decl → IDENTIFIER (line %d)\n", yylineno);
+        debugPrint("Expanding rule: var_decl → IDENTIFIER (line %d)\n", yylineno);
         llvm::Value* alloc = generateVariableDeclIR($1, currentType, currentScope);
         if (!alloc) {
             reportError("Error: Failed to generate variable declaration for '%s' (line %d)\n", $1, yylineno);
@@ -584,7 +585,7 @@ var_decl:
         insertVariable($1, currentType, currentScope, alloc, 0);
     }
     | IDENTIFIER ASSIGN expr {
-        printf("Expanding rule: var_decl → IDENTIFIER ASSIGN expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: var_decl → IDENTIFIER ASSIGN expr (line %d)\n", yylineno);
         llvm::Value* alloc = generateVariableDeclIR($1, currentType, currentScope);
         if (!alloc) {
             reportError("Error: Failed to generate variable declaration for '%s' (line %d)\n", $1, yylineno);
@@ -614,7 +615,7 @@ var_decl:
         }
     }
     | IDENTIFIER LBRACKET NUMBER RBRACKET {
-        printf("Expanding rule: var_decl → IDENTIFIER LBRACKET NUMBER RBRACKET (line %d)\n", yylineno);
+        debugPrint("Expanding rule: var_decl → IDENTIFIER LBRACKET NUMBER RBRACKET (line %d)\n", yylineno);
         if ($3 <= 0) {
             reportError("Semantic Error: Array '%s' must have a size greater than 0 (line %d)\n", $1, yylineno);
             YYERROR;
@@ -634,33 +635,33 @@ var_decl:
     ;
 
 case_list:
-    case_list case_item { printf("Expanding rule: case_list → case_list case_item (line %d)\n", yylineno); }
-    | case_item { printf("Expanding rule: case_list → case_item (line %d)\n", yylineno); }
+    case_list case_item { debugPrint("Expanding rule: case_list → case_list case_item (line %d)\n", yylineno); }
+    | case_item { debugPrint("Expanding rule: case_list → case_item (line %d)\n", yylineno); }
     ;
 
 /* A case's statements may be empty, so several labels can share one body:
    case 1: case 2: x = 5; break; */
 case_item:
-    case_label stmt_list_opt { printf("Expanding rule: case_item → case_label stmt_list_opt (line %d)\n", yylineno); }
+    case_label stmt_list_opt { debugPrint("Expanding rule: case_item → case_label stmt_list_opt (line %d)\n", yylineno); }
     ;
 
 /* case_label reduces as soon as "case 2:" is read, BEFORE that case's
    statements, so they are generated inside the new case block. */
 case_label:
     CASE NUMBER COLON {
-        printf("Expanding rule: case_label → CASE NUMBER COLON (line %d)\n", yylineno);
+        debugPrint("Expanding rule: case_label → CASE NUMBER COLON (line %d)\n", yylineno);
         if (generateCaseIR($2) != 0) {
             reportError("Semantic Error: Duplicate case value %d in switch (line %d)\n", $2, yylineno);
         }
     }
     | CASE MINUS NUMBER COLON {
-        printf("Expanding rule: case_label → CASE MINUS NUMBER COLON (line %d)\n", yylineno);
+        debugPrint("Expanding rule: case_label → CASE MINUS NUMBER COLON (line %d)\n", yylineno);
         if (generateCaseIR(-$3) != 0) {
             reportError("Semantic Error: Duplicate case value %d in switch (line %d)\n", -$3, yylineno);
         }
     }
     | DEFAULT COLON {
-        printf("Expanding rule: case_label → DEFAULT COLON (line %d)\n", yylineno);
+        debugPrint("Expanding rule: case_label → DEFAULT COLON (line %d)\n", yylineno);
         if (generateDefaultCaseIR() != 0) {
             reportError("Semantic Error: Multiple default labels in switch (line %d)\n", yylineno);
         }
@@ -669,100 +670,100 @@ case_label:
 
 expr:
     expr PLUS expr {
-        printf("Expanding rule: expr → expr PLUS expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr PLUS expr (line %d)\n", yylineno);
         if ($1 && $3 && $1->getType() != $3->getType()) {
             reportError("Type Error: Mismatched types in addition at line %d\n", yylineno);
         }
         $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "+", $1, $3, "", 0, 0.0, false);
     }
     | expr MINUS expr {
-        printf("Expanding rule: expr → expr MINUS expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr MINUS expr (line %d)\n", yylineno);
         if ($1 && $3 && $1->getType() != $3->getType()) {
             reportError("Type Error: Mismatched types in subtraction at line %d\n", yylineno);
         }
         $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "-", $1, $3, "", 0, 0.0, false);
     }
     | expr MULT expr {
-        printf("Expanding rule: expr → expr MULT expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr MULT expr (line %d)\n", yylineno);
         if ($1 && $3 && $1->getType() != $3->getType()) {
             reportError("Type Error: Mismatched types in multiplication at line %d\n", yylineno);
         }
         $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "*", $1, $3, "", 0, 0.0, false);
     }
     | expr DIV expr {
-        printf("Expanding rule: expr → expr DIV expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr DIV expr (line %d)\n", yylineno);
         if ($1 && $3 && $1->getType() != $3->getType()) {
             reportError("Type Error: Mismatched types in division at line %d\n", yylineno);
         }
         $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "/", $1, $3, "", 0, 0.0, false);
     }
     | expr MOD expr {
-        printf("Expanding rule: expr → expr MOD expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr MOD expr (line %d)\n", yylineno);
         if ($1 && $3 && $1->getType() != $3->getType()) {
             reportError("Type Error: Mismatched types in modulo at line %d\n", yylineno);
         }
         $$ = generateExprIR(TYPE_INT, "%", $1, $3, "", 0, 0.0, false);
     }
     | expr AND expr {
-        printf("Expanding rule: expr → expr AND expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr AND expr (line %d)\n", yylineno);
         $$ = generateLogicalIR("&&", $1, $3);
     }
     | expr OR expr {
-        printf("Expanding rule: expr → expr OR expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr OR expr (line %d)\n", yylineno);
         $$ = generateLogicalIR("||", $1, $3);
     }
     | NOT expr {
-        printf("Expanding rule: expr → NOT expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → NOT expr (line %d)\n", yylineno);
         $$ = generateLogicalIR("!", $2, nullptr);
     }
     | MINUS expr %prec NOT {
         // Unary minus (-x). %prec NOT gives it the same high precedence as
         // '!', so -a * b means (-a) * b, not -(a * b).
-        printf("Expanding rule: expr → MINUS expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → MINUS expr (line %d)\n", yylineno);
         $$ = generateNegateIR($2);
     }
     | expr EQ expr {
-        printf("Expanding rule: expr → expr EQ expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr EQ expr (line %d)\n", yylineno);
         $$ = generateRelationalIR("==", $1, $3);
     }
     | expr NEQ expr {
-        printf("Expanding rule: expr → expr NEQ expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr NEQ expr (line %d)\n", yylineno);
         $$ = generateRelationalIR("!=", $1, $3);
     }
     | expr LT expr {
-        printf("Expanding rule: expr → expr LT expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr LT expr (line %d)\n", yylineno);
         $$ = generateRelationalIR("<", $1, $3);
     }
     | expr GT expr {
-        printf("Expanding rule: expr → expr GT expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr GT expr (line %d)\n", yylineno);
         $$ = generateRelationalIR(">", $1, $3);
     }
     | expr LE expr {
-        printf("Expanding rule: expr → expr LE expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr LE expr (line %d)\n", yylineno);
         $$ = generateRelationalIR("<=", $1, $3);
     }
     | expr GE expr {
-        printf("Expanding rule: expr → expr GE expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → expr GE expr (line %d)\n", yylineno);
         $$ = generateRelationalIR(">=", $1, $3);
     }
     | NUMBER {
-        printf("Expanding rule: expr → NUMBER (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → NUMBER (line %d)\n", yylineno);
         $$ = generateExprIR(TYPE_INT, "", nullptr, nullptr, "", $1, 0.0, false);
     }
     | FLOATNUMBER {
-        printf("Expanding rule: expr → FLOATNUMBER (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → FLOATNUMBER (line %d)\n", yylineno);
         $$ = generateExprIR(TYPE_FLOAT, "", nullptr, nullptr, "", 0, $1, false);
     }
     | TRUE {
-        printf("Expanding rule: expr → TRUE (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → TRUE (line %d)\n", yylineno);
         $$ = generateExprIR(TYPE_BOOL, "", nullptr, nullptr, "", 0, 0.0, true);
     }
     | FALSE {
-        printf("Expanding rule: expr → FALSE (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → FALSE (line %d)\n", yylineno);
         $$ = generateExprIR(TYPE_BOOL, "", nullptr, nullptr, "", 0, 0.0, false);
     }
     | IDENTIFIER {
-        printf("Expanding rule: expr → IDENTIFIER (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → IDENTIFIER (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
@@ -777,7 +778,7 @@ expr:
         }
     }
     | IDENTIFIER LPAREN arg_list_opt RPAREN {
-        printf("Expanding rule: expr → IDENTIFIER LPAREN arg_list_opt RPAREN (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → IDENTIFIER LPAREN arg_list_opt RPAREN (line %d)\n", yylineno);
         if (!checkFunctionCallArgs($1, $3)) {
             reportError("Semantic Error: Invalid arguments for function '%s' (line %d)\n", $1, yylineno);
             $$ = nullptr;
@@ -786,24 +787,24 @@ expr:
         }
     }
     | IDENTIFIER LBRACKET expr RBRACKET {
-        printf("Expanding rule: expr → IDENTIFIER LBRACKET expr RBRACKET (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → IDENTIFIER LBRACKET expr RBRACKET (line %d)\n", yylineno);
         Symbol* sym = checkArrayAccess($1, $3);
         $$ = sym ? generateArrayLoadIR(sym->value, sym->type, sym->arraySize, $3) : nullptr;
     }
     | LPAREN expr RPAREN {
-        printf("Expanding rule: expr → LPAREN expr RPAREN (line %d)\n", yylineno);
+        debugPrint("Expanding rule: expr → LPAREN expr RPAREN (line %d)\n", yylineno);
         $$ = $2;
     }
     ;
 
 arg_list_opt:
-    /* empty */ { printf("Expanding rule: arg_list_opt → /* empty */ (line %d)\n", yylineno); $$ = NULL; }
-    | arg_list { printf("Expanding rule: arg_list_opt → arg_list (line %d)\n", yylineno); $$ = $1; }
+    /* empty */ { debugPrint("Expanding rule: arg_list_opt → /* empty */ (line %d)\n", yylineno); $$ = NULL; }
+    | arg_list { debugPrint("Expanding rule: arg_list_opt → arg_list (line %d)\n", yylineno); $$ = $1; }
     ;
 
 arg_list:
     expr {
-        printf("Expanding rule: arg_list → expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: arg_list → expr (line %d)\n", yylineno);
         Param* p = (Param*)malloc(sizeof(Param));
         p->type = $1 ? ($1->getType()->isIntegerTy(32) ? TYPE_INT : ($1->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL)) : TYPE_INT;
         p->name = nullptr;
@@ -812,7 +813,7 @@ arg_list:
         $$ = p;
     }
     | arg_list COMMA expr {
-        printf("Expanding rule: arg_list → arg_list COMMA expr (line %d)\n", yylineno);
+        debugPrint("Expanding rule: arg_list → arg_list COMMA expr (line %d)\n", yylineno);
         Param* p = (Param*)malloc(sizeof(Param));
         p->type = $3 ? ($3->getType()->isIntegerTy(32) ? TYPE_INT : ($3->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL)) : TYPE_INT;
         p->name = nullptr;
@@ -838,9 +839,24 @@ void yyerror(const char *s) {
 void reportError(const char* format, ...) {
     va_list args;
     va_start(args, format);
-    vprintf(format, args);
+    vfprintf(stderr, format, args); // errors go to stderr, like any compiler
     va_end(args);
     errorCount++;
+}
+
+int verbose = 0; // set by the -v command-line option
+
+// Like printf, but only prints when the compiler was run with -v. Used for
+// the step-by-step output (tokens, grammar rules, IR generation), which is
+// useful for learning and debugging but too much for everyday use.
+void debugPrint(const char* format, ...) {
+    if (!verbose) {
+        return;
+    }
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
 }
 
 // The lexer gives us the string literal exactly as written, quotes and
@@ -936,11 +952,24 @@ Symbol* checkArrayAccess(const char* name, llvm::Value* index) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+    // Usage: ./compiler [-v] file.c   (-v shows every compiler step)
+    const char* filename = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-v") == 0) {
+            verbose = 1;
+        } else if (filename == NULL) {
+            filename = argv[i];
+        } else {
+            filename = NULL; // more than one file given
+            break;
+        }
+    }
+    if (filename == NULL) {
+        fprintf(stderr, "Usage: %s [-v] <filename>\n", argv[0]);
+        fprintf(stderr, "  -v  show every compiler step (tokens, grammar rules, IR generation)\n");
         return 1;
     }
-    FILE *file = fopen(argv[1], "r");
+    FILE *file = fopen(filename, "r");
     if (!file) {
         perror("Error opening file");
         return 1;
@@ -953,11 +982,13 @@ int main(int argc, char *argv[]) {
     int result = yyparse();
     fclose(file);
     if (result == 0) {
-        printf("Parsing successful!\n");
+        debugPrint("Parsing successful!\n");
     } else {
-        printf("Parsing failed with errors.\n");
+        debugPrint("Parsing failed with errors.\n");
     }
-    printSymbolTable();
+    if (verbose) {
+        printSymbolTable();
+    }
     freeSymbolTable();
 
     // Only produce output.ll for an error-free program. On failure, delete
@@ -973,13 +1004,13 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Compilation failed with %d error(s).\n", errorCount > 0 ? errorCount : 1);
         return 1;
     }
+    printf("Compiled %s to output.ll\n", filename);
     return 0;
 
     // HOW TO RUN ??
     //  make clean
     //  make
-    //  ./compiler testCaseExamples/test.c
-    //  llvm-as output.ll -o output.bc
-    //  lli output.bc
+    //  ./compiler testCaseExamples/test.c     (add -v to see every step)
+    //  lli output.ll
     //  echo $?
 }

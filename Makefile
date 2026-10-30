@@ -11,7 +11,7 @@ LDFLAGS = `$(LLVM_CONFIG) --ldflags --libs core analysis native scalaropts`
 
 all: compiler
 
-compiler: lex.yy.c parser.tab.c symbol_table.o llvm_ir.o
+compiler: lex.yy.c parser.tab.c symbol_table.o llvm_ir.o debug.h
 	$(CC) $(CFLAGS) -o compiler lex.yy.c parser.tab.c symbol_table.o llvm_ir.o $(LDFLAGS)
 
 lex.yy.c: lexical.l parser.tab.h
@@ -23,7 +23,7 @@ parser.tab.c parser.tab.h: parser.y
 symbol_table.o: symbol_table.c symbol_table.h
 	$(CC) $(CFLAGS) -c symbol_table.c
 
-llvm_ir.o: llvm_ir.c llvm_ir.h
+llvm_ir.o: llvm_ir.c llvm_ir.h debug.h
 	$(CC) $(CFLAGS) -c llvm_ir.c
 
 # Build, then run every test in tests/ (see tests/run_tests.sh)

@@ -64,8 +64,10 @@ YYSTYPE yylval;  // Declare yylval for standalone mode
 #define LBRACKET 47
 #define RBRACKET 48
 #define CONTINUE 49
+#define debugPrint printf   // the standalone lexer always prints its tokens
 #else
 #include "parser.tab.h"
+#include "debug.h"
 #endif
 
 int return_token(int token) {
@@ -92,72 +94,72 @@ WS      [ \t]+
 NEWLINE \n
 %%
 
-"#".*               { printf("Processing token at line %d: Preprocessor directive: %s\n", yylineno, yytext); }
-"int"               { printf("Processing token at line %d: INT, Lexeme: %s\n", yylineno, yytext); return return_token(INT); }
-"float"             { printf("Processing token at line %d: FLOAT, Lexeme: %s\n", yylineno, yytext); return return_token(FLOAT); }
-"bool"              { printf("Processing token at line %d: BOOL, Lexeme: %s\n", yylineno, yytext); return return_token(BOOL); }
-"void"              { printf("Processing token at line %d: VOID, Lexeme: %s\n", yylineno, yytext); return return_token(VOID); }
-"return"            { printf("Processing token at line %d: RETURN, Lexeme: %s\n", yylineno, yytext); return return_token(RETURN); }
-"main"              { printf("Processing token at line %d: MAIN, Lexeme: %s\n", yylineno, yytext); return return_token(MAIN); }
-"printf"            { printf("Processing token at line %d: PRINTF, Lexeme: %s\n", yylineno, yytext); return return_token(PRINTF); }
-"scanf"             { printf("Processing token at line %d: SCANF, Lexeme: %s\n", yylineno, yytext); return return_token(SCANF); }
-"for"               { printf("Processing token at line %d: FOR, Lexeme: %s\n", yylineno, yytext); return return_token(FOR); }
-"if"                { printf("Processing token at line %d: IF, Lexeme: %s\n", yylineno, yytext); return return_token(IF); }
-"else"              { printf("Processing token at line %d: ELSE, Lexeme: %s\n", yylineno, yytext); return return_token(ELSE); }
-"while"             { printf("Processing token at line %d: WHILE, Lexeme: %s\n", yylineno, yytext); return return_token(WHILE); }
-"switch"            { printf("Processing token at line %d: SWITCH, Lexeme: %s\n", yylineno, yytext); return return_token(SWITCH); }
-"case"              { printf("Processing token at line %d: CASE, Lexeme: %s\n", yylineno, yytext); return return_token(CASE); }
-"true"              { printf("Processing token at line %d: TRUE, Lexeme: %s\n", yylineno, yytext); return return_token(TRUE); }
-"false"             { printf("Processing token at line %d: FALSE, Lexeme: %s\n", yylineno, yytext); return return_token(FALSE); }
-"break"             { printf("Processing token at line %d: BREAK, Lexeme: %s\n", yylineno, yytext); return return_token(BREAK); }
-"continue"          { printf("Processing token at line %d: CONTINUE, Lexeme: %s\n", yylineno, yytext); return return_token(CONTINUE); }
-"default"           { printf("Processing token at line %d: DEFAULT, Lexeme: %s\n", yylineno, yytext); return return_token(DEFAULT); }
-"<="                { printf("Processing token at line %d: LE, Lexeme: %s\n", yylineno, yytext); return return_token(LE); }
-"<"                 { printf("Processing token at line %d: LT, Lexeme: %s\n", yylineno, yytext); return return_token(LT); }
-">"                 { printf("Processing token at line %d: GT, Lexeme: %s\n", yylineno, yytext); return return_token(GT); }
-">="                { printf("Processing token at line %d: GE, Lexeme: %s\n", yylineno, yytext); return return_token(GE); }
-"=="                { printf("Processing token at line %d: EQ, Lexeme: %s\n", yylineno, yytext); return return_token(EQ); }
-"!="                { printf("Processing token at line %d: NEQ, Lexeme: %s\n", yylineno, yytext); return return_token(NEQ); }
-"&&"                { printf("Processing token at line %d: AND, Lexeme: %s\n", yylineno, yytext); return return_token(AND); }
-"||"                { printf("Processing token at line %d: OR, Lexeme: %s\n", yylineno, yytext); return return_token(OR); }
-"!"                 { printf("Processing token at line %d: NOT, Lexeme: %s\n", yylineno, yytext); return return_token(NOT); }
-"++"                { printf("Processing token at line %d: INCR, Lexeme: %s\n", yylineno, yytext); return return_token(INCR); }
-"--"                { printf("Processing token at line %d: INCR, Lexeme: %s\n", yylineno, yytext); return return_token(DECR); }
-","                 { printf("Processing token at line %d: COMMA, Lexeme: %s\n", yylineno, yytext); return return_token(COMMA); }
-"="                 { printf("Processing token at line %d: ASSIGN, Lexeme: %s\n", yylineno, yytext); return return_token(ASSIGN); }
-"("                 { printf("Processing token at line %d: LPAREN, Lexeme: %s\n", yylineno, yytext); return return_token(LPAREN); }
-")"                 { printf("Processing token at line %d: RPAREN, Lexeme: %s\n", yylineno, yytext); return return_token(RPAREN); }
-"{"                 { printf("Processing token at line %d: LBRACE, Lexeme: %s\n", yylineno, yytext); return return_token(LBRACE); }
-"}"                 { printf("Processing token at line %d: RBRACE, Lexeme: %s\n", yylineno, yytext); return return_token(RBRACE); }
-"["                 { printf("Processing token at line %d: LBRACKET, Lexeme: %s\n", yylineno, yytext); return return_token(LBRACKET); }
-"]"                 { printf("Processing token at line %d: RBRACKET, Lexeme: %s\n", yylineno, yytext); return return_token(RBRACKET); }
-":"                 { printf("Processing token at line %d: COLON, Lexeme: %s\n", yylineno, yytext); return return_token(COLON); }
-";"                 { printf("Processing token at line %d: SEMI, Lexeme: %s\n", yylineno, yytext); return return_token(SEMI); }
-"+"                 { printf("Processing token at line %d: PLUS, Lexeme: %s\n", yylineno, yytext); return return_token(PLUS); }
-"-"                 { printf("Processing token at line %d: MINUS, Lexeme: %s\n", yylineno, yytext); return return_token(MINUS); }
-"*"                 { printf("Processing token at line %d: MULT, Lexeme: %s\n", yylineno, yytext); return return_token(MULT); }
-"/"                 { printf("Processing token at line %d: DIV, Lexeme: %s\n", yylineno, yytext); return return_token(DIV); }
-"%"                 { printf("Processing token at line %d: MOD, Lexeme: %s\n", yylineno, yytext); return return_token(MOD); }
+"#".*               { debugPrint("Processing token at line %d: Preprocessor directive: %s\n", yylineno, yytext); }
+"int"               { debugPrint("Processing token at line %d: INT, Lexeme: %s\n", yylineno, yytext); return return_token(INT); }
+"float"             { debugPrint("Processing token at line %d: FLOAT, Lexeme: %s\n", yylineno, yytext); return return_token(FLOAT); }
+"bool"              { debugPrint("Processing token at line %d: BOOL, Lexeme: %s\n", yylineno, yytext); return return_token(BOOL); }
+"void"              { debugPrint("Processing token at line %d: VOID, Lexeme: %s\n", yylineno, yytext); return return_token(VOID); }
+"return"            { debugPrint("Processing token at line %d: RETURN, Lexeme: %s\n", yylineno, yytext); return return_token(RETURN); }
+"main"              { debugPrint("Processing token at line %d: MAIN, Lexeme: %s\n", yylineno, yytext); return return_token(MAIN); }
+"printf"            { debugPrint("Processing token at line %d: PRINTF, Lexeme: %s\n", yylineno, yytext); return return_token(PRINTF); }
+"scanf"             { debugPrint("Processing token at line %d: SCANF, Lexeme: %s\n", yylineno, yytext); return return_token(SCANF); }
+"for"               { debugPrint("Processing token at line %d: FOR, Lexeme: %s\n", yylineno, yytext); return return_token(FOR); }
+"if"                { debugPrint("Processing token at line %d: IF, Lexeme: %s\n", yylineno, yytext); return return_token(IF); }
+"else"              { debugPrint("Processing token at line %d: ELSE, Lexeme: %s\n", yylineno, yytext); return return_token(ELSE); }
+"while"             { debugPrint("Processing token at line %d: WHILE, Lexeme: %s\n", yylineno, yytext); return return_token(WHILE); }
+"switch"            { debugPrint("Processing token at line %d: SWITCH, Lexeme: %s\n", yylineno, yytext); return return_token(SWITCH); }
+"case"              { debugPrint("Processing token at line %d: CASE, Lexeme: %s\n", yylineno, yytext); return return_token(CASE); }
+"true"              { debugPrint("Processing token at line %d: TRUE, Lexeme: %s\n", yylineno, yytext); return return_token(TRUE); }
+"false"             { debugPrint("Processing token at line %d: FALSE, Lexeme: %s\n", yylineno, yytext); return return_token(FALSE); }
+"break"             { debugPrint("Processing token at line %d: BREAK, Lexeme: %s\n", yylineno, yytext); return return_token(BREAK); }
+"continue"          { debugPrint("Processing token at line %d: CONTINUE, Lexeme: %s\n", yylineno, yytext); return return_token(CONTINUE); }
+"default"           { debugPrint("Processing token at line %d: DEFAULT, Lexeme: %s\n", yylineno, yytext); return return_token(DEFAULT); }
+"<="                { debugPrint("Processing token at line %d: LE, Lexeme: %s\n", yylineno, yytext); return return_token(LE); }
+"<"                 { debugPrint("Processing token at line %d: LT, Lexeme: %s\n", yylineno, yytext); return return_token(LT); }
+">"                 { debugPrint("Processing token at line %d: GT, Lexeme: %s\n", yylineno, yytext); return return_token(GT); }
+">="                { debugPrint("Processing token at line %d: GE, Lexeme: %s\n", yylineno, yytext); return return_token(GE); }
+"=="                { debugPrint("Processing token at line %d: EQ, Lexeme: %s\n", yylineno, yytext); return return_token(EQ); }
+"!="                { debugPrint("Processing token at line %d: NEQ, Lexeme: %s\n", yylineno, yytext); return return_token(NEQ); }
+"&&"                { debugPrint("Processing token at line %d: AND, Lexeme: %s\n", yylineno, yytext); return return_token(AND); }
+"||"                { debugPrint("Processing token at line %d: OR, Lexeme: %s\n", yylineno, yytext); return return_token(OR); }
+"!"                 { debugPrint("Processing token at line %d: NOT, Lexeme: %s\n", yylineno, yytext); return return_token(NOT); }
+"++"                { debugPrint("Processing token at line %d: INCR, Lexeme: %s\n", yylineno, yytext); return return_token(INCR); }
+"--"                { debugPrint("Processing token at line %d: INCR, Lexeme: %s\n", yylineno, yytext); return return_token(DECR); }
+","                 { debugPrint("Processing token at line %d: COMMA, Lexeme: %s\n", yylineno, yytext); return return_token(COMMA); }
+"="                 { debugPrint("Processing token at line %d: ASSIGN, Lexeme: %s\n", yylineno, yytext); return return_token(ASSIGN); }
+"("                 { debugPrint("Processing token at line %d: LPAREN, Lexeme: %s\n", yylineno, yytext); return return_token(LPAREN); }
+")"                 { debugPrint("Processing token at line %d: RPAREN, Lexeme: %s\n", yylineno, yytext); return return_token(RPAREN); }
+"{"                 { debugPrint("Processing token at line %d: LBRACE, Lexeme: %s\n", yylineno, yytext); return return_token(LBRACE); }
+"}"                 { debugPrint("Processing token at line %d: RBRACE, Lexeme: %s\n", yylineno, yytext); return return_token(RBRACE); }
+"["                 { debugPrint("Processing token at line %d: LBRACKET, Lexeme: %s\n", yylineno, yytext); return return_token(LBRACKET); }
+"]"                 { debugPrint("Processing token at line %d: RBRACKET, Lexeme: %s\n", yylineno, yytext); return return_token(RBRACKET); }
+":"                 { debugPrint("Processing token at line %d: COLON, Lexeme: %s\n", yylineno, yytext); return return_token(COLON); }
+";"                 { debugPrint("Processing token at line %d: SEMI, Lexeme: %s\n", yylineno, yytext); return return_token(SEMI); }
+"+"                 { debugPrint("Processing token at line %d: PLUS, Lexeme: %s\n", yylineno, yytext); return return_token(PLUS); }
+"-"                 { debugPrint("Processing token at line %d: MINUS, Lexeme: %s\n", yylineno, yytext); return return_token(MINUS); }
+"*"                 { debugPrint("Processing token at line %d: MULT, Lexeme: %s\n", yylineno, yytext); return return_token(MULT); }
+"/"                 { debugPrint("Processing token at line %d: DIV, Lexeme: %s\n", yylineno, yytext); return return_token(DIV); }
+"%"                 { debugPrint("Processing token at line %d: MOD, Lexeme: %s\n", yylineno, yytext); return return_token(MOD); }
 \"([^\"]*)\" {
-    printf("Processing token at line %d: STRING, Lexeme: %s\n", yylineno, yytext);
+    debugPrint("Processing token at line %d: STRING, Lexeme: %s\n", yylineno, yytext);
     yylval.str = strdup(yytext); // You can also remove the quotes manually if needed
     return return_token(STRING);
 }
 
 {FLOATNUM} {
-    printf("Processing token at line %d: FLOAT NUMBER, Lexeme: %s\n", yylineno, yytext);
+    debugPrint("Processing token at line %d: FLOAT NUMBER, Lexeme: %s\n", yylineno, yytext);
     yylval.fnum = atof(yytext);
     return return_token(FLOATNUMBER); 
 }
 
 {DIGIT} {
-    printf("Processing token at line %d: NUMBER, Lexeme: %s\n", yylineno, yytext);
+    debugPrint("Processing token at line %d: NUMBER, Lexeme: %s\n", yylineno, yytext);
     yylval.num = atoi(yytext);
     return return_token(NUMBER);
 }
 
 {ID} {
-    printf("Processing token at line %d: IDENTIFIER, Lexeme: %s\n", yylineno, yytext);
+    debugPrint("Processing token at line %d: IDENTIFIER, Lexeme: %s\n", yylineno, yytext);
     yylval.id = strdup(yytext); // strdup allocates a copy of the lexeme
     return return_token(IDENTIFIER);
 }
@@ -165,7 +167,7 @@ NEWLINE \n
 {NEWLINE}           { /* ignore newlines */ }
 "//".*              { /* Ignore single line comments */ }
 "/*"([^*]|(\*+[^*/]))*"*/" { /* Ignore multi-line comments */ }
-.                   { printf("Processing token at line %d: Unknown character: %s\n", yylineno, yytext); }
+.                   { debugPrint("Processing token at line %d: Unknown character: %s\n", yylineno, yytext); }
 
 
 %%

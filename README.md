@@ -75,6 +75,7 @@ git clone https://github.com/<coderafay>/c-compiler-flex-bison-llvm.git
 cd c-compiler-flex-bison-llvm
 make                                   # builds ./compiler
 ./compiler testCaseExamples/test.c     # writes output.ll
+./compiler -v testCaseExamples/test.c  # same, but shows every step: tokens, grammar rules, IR generation
 lli output.ll; echo $?                 # runs the program, prints main's return value
 ```
 
@@ -129,6 +130,7 @@ entry:
 
 ```sh
 $ ./compiler example.c && lli output.ll; echo $?
+Compiled example.c to output.ll
 42
 ```
 
@@ -200,7 +202,7 @@ This is an active learning project. The front end is complete; code generation i
 - [x] Accept negative `case` labels (`case -1:`) in the `switch` rewrite
 - [x] `break`/`continue` inside loops (with the `switch` rewrite, which makes `break` a normal statement)
 - [x] Automated test suite (`make test`) with expected outputs
-- [ ] Hide debug output behind a `-v` flag
+- [x] Hide debug output behind a `-v` flag
 - [x] Stop writing IR when semantic errors occur
 - [ ] Optimization passes (mem2reg, constant folding)
 - [ ] Native executables via `llc` and the system linker
