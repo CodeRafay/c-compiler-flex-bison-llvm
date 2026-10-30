@@ -20,6 +20,7 @@
 - [How it works](#how-it-works)
 - [Project structure](#project-structure)
 - [Project status](#project-status)
+- [Limitations](#limitations)
 - [Roadmap](#roadmap)
 - [FAQ](#faq)
 - [Contributing](#contributing)
@@ -145,7 +146,8 @@ int main() {
 
 ```
 Semantic Error: Variable 'y' not declared (line 2)
-Type Error: Cannot assign incompatible type to 'x' (line 2)
+Error: Expression for assignment to 'x' is invalid (line 2)
+Compilation failed with 2 error(s).
 ```
 
 ## How it works
@@ -196,6 +198,29 @@ Every feature listed under [Features](#features) generates working LLVM IR, and 
 | IR: `switch` (fallthrough, grouped labels, `case -1:`, `default` anywhere, nested) | ✅ Working and verified with `lli` |
 | Arrays (`int a[10]`, `a[i]`, local and global) | ✅ Working and verified with `lli` |
 
+## Limitations
+
+These are valid C but not supported yet. Unless noted, the compiler reports a syntax error.
+
+**Statements**
+- `if`/`else`, `while` and `for` bodies need braces: write `if (x) { return 1; }`, not `if (x) return 1;`
+- No `do … while`, no ternary `?:`, and no bare `{ … }` blocks inside a function
+- `for` needs all three parts; `for (;;)` is not accepted
+
+**Operators**
+- No compound assignment (`+=`, `-=`, …)
+- `++` and `--` work only as statements (`i++;`), not inside expressions (`x = i++;`)
+- No casts such as `(int)f`, so there is no way to turn a float into an int yet
+- `&&` and `||` always evaluate both sides. This compiles, but behaves differently from C, which skips the right side once the result is known
+
+**Types and data**
+- Only `int`, `float`, `bool` and `void`: no `char`, `double`, strings, pointers or structs
+- Arrays are one-dimensional, can't have initializer lists (`{1, 2, 3}`), and can't be passed to functions
+- `printf` arguments must be numbers (no `%s` with a string argument), and `scanf` reads only into plain variables
+
+**Preprocessor**
+- Lines starting with `#` are skipped, so `#include <stdio.h>` is harmless but `#define` has no effect
+
 ## Roadmap
 
 - [x] Fix control flow code generation (`if`/`else`, `while`, `for`, `switch`)
@@ -220,7 +245,7 @@ Flex produces `yylex()`, which returns one token at a time. Bison's generated `y
 LLVM IR is portable and strongly typed, and LLVM can optimize it. The same IR can be interpreted with `lli`, optimized with `opt`, or compiled to native code for any target with `llc`. That lets the project focus on front-end concepts.
 
 **Is this a full C compiler?**
-No. It supports a teaching-sized subset of C: no pointers, structs, or preprocessor. Use GCC or Clang for real C code.
+No. It supports a teaching-sized subset of C; see [Limitations](#limitations) for what is missing. Use GCC or Clang for real C code.
 
 **Which LLVM version is required?**
 LLVM 14. Other versions may need small API changes.
