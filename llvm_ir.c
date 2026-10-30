@@ -7,8 +7,21 @@
 llvm::LLVMContext context;
 llvm::Module* module = nullptr;
 llvm::IRBuilder<> builder(context);
-llvm::BasicBlock* afterSwitchBB = nullptr;
-llvm::SwitchInst* currentSwitchInst = nullptr;
+
+// Where "break" and "continue" jump to. Every loop pushes its targets when
+// its body starts and pops them at the end; a switch pushes a break target.
+// The innermost loop/switch is always at the back of the vector.
+std::vector<llvm::BasicBlock*> breakTargets;
+std::vector<llvm::BasicBlock*> continueTargets;
+
+// After return, break or continue, the current block is finished. If more
+// statements follow (dead code, e.g. "return 1; x = 2;"), they still need a
+// block to go into, so start a new one. Nothing jumps to it, which is fine.
+static void startBlockAfterJump() {
+    llvm::Function* func = builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock* afterJump = llvm::BasicBlock::Create(context, "after.jump", func);
+    builder.SetInsertPoint(afterJump);
+}
 
 void initLLVM(const std::string& moduleName) {
     if (module) {
@@ -367,6 +380,7 @@ void generateReturnIR(llvm::Value* value) {
     } else {
         builder.CreateRetVoid();
     }
+    startBlockAfterJump();
 }
 
 llvm::Value* generateFunctionCallIR(const std::string& name, Param* args) {
@@ -554,6 +568,11 @@ void generateLoopCondIR(LoopBlocks* loop, llvm::Value* cond, bool hasStep) {
     }
     builder.CreateCondBr(cond, loop->bodyBB, loop->afterBB);
     builder.SetInsertPoint(hasStep ? loop->stepBB : loop->bodyBB);
+
+    // Inside this loop's body, break leaves the loop and continue starts the
+    // next iteration (through the step in a for loop, so i++ still runs)
+    breakTargets.push_back(loop->afterBB);
+    continueTargets.push_back(hasStep ? loop->stepBB : loop->condBB);
 }
 
 // for loops only: the update has been generated in for.step. Jump back to
@@ -569,6 +588,8 @@ void generateForStepEndIR(LoopBlocks* loop) {
 void generateLoopEndIR(LoopBlocks* loop) {
     std::cout << "DEBUG: Generating loop end\n";
     branchIfOpen(loop->stepBB ? loop->stepBB : loop->condBB);
+    breakTargets.pop_back();
+    continueTargets.pop_back();
 
     llvm::Function* func = builder.GetInsertBlock()->getParent();
     func->getBasicBlockList().push_back(loop->afterBB);
@@ -576,27 +597,103 @@ void generateLoopEndIR(LoopBlocks* loop) {
     delete loop;
 }
 
-void generateSwitchIR(llvm::Value* expr) {
-    std::cout << "DEBUG: Generating switch\n";
-    llvm::Function* func = builder.GetInsertBlock()->getParent();
-    afterSwitchBB = llvm::BasicBlock::Create(context, "after_switch", func);
-    currentSwitchInst = builder.CreateSwitch(expr, afterSwitchBB);
-    // Do not add a terminator here; parser will handle branching to switch_cont
+// break: jump out of the innermost loop or switch.
+// Returns false if there is no loop or switch around it.
+bool generateBreakIR() {
+    std::cout << "DEBUG: Generating break\n";
+    if (breakTargets.empty()) {
+        return false;
+    }
+    builder.CreateBr(breakTargets.back());
+    startBlockAfterJump();
+    return true;
 }
-void generateCaseIR(int value) {
-    std::cout << "DEBUG: Generating case " << value << std::endl;
-    llvm::Function* func = builder.GetInsertBlock()->getParent();
-    llvm::BasicBlock* caseBB = llvm::BasicBlock::Create(context, "case_" + std::to_string(value), func);
-    currentSwitchInst->addCase(llvm::ConstantInt::get(context, llvm::APInt(32, value)), caseBB);
+
+// continue: jump to the next iteration of the innermost loop.
+// (A switch has no continue target, so continue inside a switch inside a
+// loop correctly goes to the loop.) Returns false if there is no loop.
+bool generateContinueIR() {
+    std::cout << "DEBUG: Generating continue\n";
+    if (continueTargets.empty()) {
+        return false;
+    }
+    builder.CreateBr(continueTargets.back());
+    startBlockAfterJump();
+    return true;
+}
+
+// switch
+// Case labels appear deep inside the case list, where they can't easily
+// reach a value on Bison's stack, so the current switch is kept on this
+// stack instead (the back is the innermost switch).
+struct SwitchInfo {
+    llvm::SwitchInst* sw;      // the switch instruction; cases are added to it
+    llvm::BasicBlock* afterBB; // code after the switch (break jumps here)
+    bool hasDefault;
+};
+std::vector<SwitchInfo*> switchStack;
+
+// Called right after "switch (value)". Until a default label appears, the
+// switch's default destination is the code after the switch.
+void generateSwitchStartIR(llvm::Value* value) {
+    std::cout << "DEBUG: Generating switch start\n";
+    SwitchInfo* info = new SwitchInfo;
+    info->afterBB = llvm::BasicBlock::Create(context, "switch.after");
+    info->sw = builder.CreateSwitch(value, info->afterBB);
+    info->hasDefault = false;
+    switchStack.push_back(info);
+    breakTargets.push_back(info->afterBB);
+}
+
+// Start a new case block. If the previous case didn't end with break, its
+// code falls through into this one, exactly like C.
+static void startCaseBlock(llvm::BasicBlock* caseBB) {
+    branchIfOpen(caseBB);
     builder.SetInsertPoint(caseBB);
 }
 
-void generateDefaultCaseIR() {
+// "case value:". Returns 1 if this value was already used in the switch.
+int generateCaseIR(int value) {
+    std::cout << "DEBUG: Generating case " << value << std::endl;
+    SwitchInfo* info = switchStack.back();
+    llvm::ConstantInt* caseValue = llvm::ConstantInt::get(context, llvm::APInt(32, value, true));
+    if (info->sw->findCaseValue(caseValue) != info->sw->case_default()) {
+        return 1;
+    }
+    llvm::Function* func = builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock* caseBB = llvm::BasicBlock::Create(context, "case." + std::to_string(value), func);
+    info->sw->addCase(caseValue, caseBB);
+    startCaseBlock(caseBB);
+    return 0;
+}
+
+// "default:". Returns 1 if the switch already has a default.
+int generateDefaultCaseIR() {
     std::cout << "DEBUG: Generating default case\n";
+    SwitchInfo* info = switchStack.back();
+    if (info->hasDefault) {
+        return 1;
+    }
     llvm::Function* func = builder.GetInsertBlock()->getParent();
     llvm::BasicBlock* defaultBB = llvm::BasicBlock::Create(context, "default", func);
-    currentSwitchInst->setDefaultDest(defaultBB);
-    builder.SetInsertPoint(defaultBB);
+    info->sw->setDefaultDest(defaultBB); // backpatch: was "after the switch"
+    info->hasDefault = true;
+    startCaseBlock(defaultBB);
+    return 0;
+}
+
+// Called at the closing brace: the last case falls out of the switch.
+void generateSwitchEndIR() {
+    std::cout << "DEBUG: Generating switch end\n";
+    SwitchInfo* info = switchStack.back();
+    branchIfOpen(info->afterBB);
+    switchStack.pop_back();
+    breakTargets.pop_back();
+
+    llvm::Function* func = builder.GetInsertBlock()->getParent();
+    func->getBasicBlockList().push_back(info->afterBB);
+    builder.SetInsertPoint(info->afterBB);
+    delete info;
 }
 
 bool writeIRToFile(const std::string& filename) {

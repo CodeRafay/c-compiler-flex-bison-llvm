@@ -42,7 +42,7 @@ Most compiler tutorials stop at parsing, or they jump straight to a full product
 - Global and local variables, one-dimensional arrays with compile-time bounds checks for constant indices
 - Functions with parameters and return values; prototypes, which may leave out parameter names (`int add(int, int);`)
 - Arithmetic `+ - * / %` and unary minus (`-x`), relational `< <= > >= == !=`, logical `&& || !`, increment and decrement `++ --`
-- Control flow: `if`/`else` and `else if` chains (conditions may be any int, float or bool, like C), `while`, `for`, `switch`/`case`/`default`, `break`, `return`
+- Control flow: `if`/`else` and `else if` chains (conditions may be any int, float or bool, like C), `while`, `for`, `switch`/`case`/`default` (fallthrough, grouped and negative labels), `break`, `continue`, `return`
 - I/O: `printf`, `scanf`. `printf` accepts a real C format string (`printf("x=%d\n", x)`) or a simple label style (`printf("Sum: ", sum)` prints `Sum: 15` and a newline)
 
 **Compiler phases**
@@ -175,14 +175,14 @@ This is an active learning project. The front end is complete; code generation i
 | IR: `printf` (format strings, labels, int/float/bool) | ✅ Working and verified with `lli` |
 | IR: `if` / `else` / `else if` (nested, early `return`) | ✅ Working and verified with `lli` |
 | IR: `while` / `for` (nested, `for (int i ...)` scoped to the loop) | ✅ Working and verified with `lli` |
-| IR: `switch` | 🔴 Case blocks are missing their final branch, so LLVM rejects the code. Negative labels (`case -1:`) are not parsed since `-` became an operator; both will be fixed in the switch rewrite |
+| IR: `switch` (fallthrough, grouped labels, `case -1:`, `default` anywhere, nested) | ✅ Working and verified with `lli` |
 | Arrays (`int a[10]`, `a[i]`, local and global) | ✅ Working and verified with `lli` |
 
 ## Roadmap
 
-- [ ] Fix control flow code generation (`if`/`else`, `while`, `for`, `switch`)
-- [ ] Accept negative `case` labels (`case -1:`) in the `switch` rewrite
-- [ ] `break`/`continue` inside loops (with the `switch` rewrite, which makes `break` a normal statement)
+- [x] Fix control flow code generation (`if`/`else`, `while`, `for`, `switch`)
+- [x] Accept negative `case` labels (`case -1:`) in the `switch` rewrite
+- [x] `break`/`continue` inside loops (with the `switch` rewrite, which makes `break` a normal statement)
 - [ ] Automated test suite (`make test`) with expected outputs
 - [ ] Hide debug output behind a `-v` flag
 - [x] Stop writing IR when semantic errors occur

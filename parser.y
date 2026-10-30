@@ -22,7 +22,6 @@ void reportError(const char* format, ...);
 int errorCount = 0; // semantic/type errors seen so far; any error = failed compile
 SymbolType currentType;
 int currentScope = 0;
-extern llvm::SwitchInst* currentSwitchInst;
 %}
 
 %union {
@@ -33,7 +32,6 @@ extern llvm::SwitchInst* currentSwitchInst;
     SymbolType typeval;
     struct Param* param;
     llvm::Value* llvm_val;
-    llvm::BasicBlock* bb;
     void* stmt;
     struct IfBlocks* ifblocks;
     struct LoopBlocks* loop;
@@ -64,11 +62,10 @@ extern llvm::SwitchInst* currentSwitchInst;
 %type <param> parameter_list_opt
 %type <param> arg_list
 %type <param> arg_list_opt
-%type <bb> switch_start
 %type <typeval> type_specifier
 %type <ifblocks> if_head
 
-%token INT FLOAT BOOL VOID RETURN MAIN PRINTF SCANF FOR IF ELSE WHILE SWITCH CASE TRUE FALSE BREAK DEFAULT
+%token INT FLOAT BOOL VOID RETURN MAIN PRINTF SCANF FOR IF ELSE WHILE SWITCH CASE TRUE FALSE BREAK CONTINUE DEFAULT
 %token LE LT GT GE EQ NEQ AND OR NOT INCR DECR COMMA ASSIGN
 %token LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COLON SEMI PLUS MINUS MULT DIV MOD
 
@@ -424,16 +421,23 @@ stmt:
         generateReturnIR($2);
         $$ = nullptr;
     }
-    | switch_start case_list RBRACE {
-        printf("Expanding rule: stmt → SWITCH LPAREN expr RPAREN LBRACE case_list RBRACE (line %d)\n", yylineno);
-        if (afterSwitchBB) {
-            // Insert point is already set to switch_cont in switch_start
-            builder.SetInsertPoint($<bb>1); // Ensure insert point is switch_cont
-        } else {
-            reportError("Error: No after_switch block for switch statement (line %d)\n", yylineno);
+    | switch_head LBRACE case_list RBRACE {
+        printf("Expanding rule: stmt → switch_head LBRACE case_list RBRACE (line %d)\n", yylineno);
+        generateSwitchEndIR();
+        $$ = nullptr;
+    }
+    | BREAK SEMI {
+        printf("Expanding rule: stmt → BREAK SEMI (line %d)\n", yylineno);
+        if (!generateBreakIR()) {
+            reportError("Semantic Error: 'break' is only allowed inside a loop or switch (line %d)\n", yylineno);
         }
-        currentSwitchInst = nullptr;
-        afterSwitchBB = nullptr;
+        $$ = nullptr;
+    }
+    | CONTINUE SEMI {
+        printf("Expanding rule: stmt → CONTINUE SEMI (line %d)\n", yylineno);
+        if (!generateContinueIR()) {
+            reportError("Semantic Error: 'continue' is only allowed inside a loop (line %d)\n", yylineno);
+        }
         $$ = nullptr;
     }
     | declaration SEMI { printf("Expanding rule: stmt → declaration SEMI (line %d)\n", yylineno); $$ = nullptr; }
@@ -476,22 +480,24 @@ else_body:
     | if_stmt { printf("Expanding rule: else_body → if_stmt (line %d)\n", yylineno); } /* else if */
     ;
 
-switch_start:
-    SWITCH LPAREN expr RPAREN LBRACE {
-        printf("Expanding rule: switch start → SWITCH LPAREN expr RPAREN LBRACE (line %d)\n", yylineno);
-        if (!$3) {
+/* switch: like if_head, switch_head reduces right after "switch (value)",
+   before any case, and emits the switch instruction. */
+switch_head:
+    SWITCH LPAREN expr RPAREN {
+        printf("Expanding rule: switch_head → SWITCH LPAREN expr RPAREN (line %d)\n", yylineno);
+        llvm::Value* value = $3;
+        if (!value) {
             reportError("Semantic Error: Invalid switch expression (line %d)\n", yylineno);
-            YYERROR;
+        } else if (!value->getType()->isIntegerTy(32)) {
+            reportError("Semantic Error: Switch expression must be an int (line %d)\n", yylineno);
+            value = nullptr;
         }
-        generateSwitchIR($3);
-        // Create a continuation block to ensure proper control flow
-        llvm::Function* func = builder.GetInsertBlock()->getParent();
-        llvm::BasicBlock* contBB = llvm::BasicBlock::Create(context, "switch_cont", func);
-        // Update afterSwitchBB to branch to contBB
-        builder.SetInsertPoint(afterSwitchBB);
-        builder.CreateBr(contBB);
-        builder.SetInsertPoint(contBB);
-        $$ = contBB; // Store contBB for later use
+        if (!value) {
+            // Keep going with a dummy value so the cases still parse and
+            // more errors can be reported; no output is written anyway.
+            value = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
+        }
+        generateSwitchStartIR(value);
     }
     ;
 
@@ -628,36 +634,35 @@ var_decl:
     ;
 
 case_list:
-    case_list case_stmt { printf("Expanding rule: case_list → case_list case_stmt (line %d)\n", yylineno); }
-    | case_stmt { printf("Expanding rule: case_list → case_stmt (line %d)\n", yylineno); }
+    case_list case_item { printf("Expanding rule: case_list → case_list case_item (line %d)\n", yylineno); }
+    | case_item { printf("Expanding rule: case_list → case_item (line %d)\n", yylineno); }
     ;
 
-case_stmt:
-    CASE NUMBER COLON stmt_list BREAK SEMI {
-        printf("Expanding rule: case_stmt → CASE NUMBER COLON stmt_list BREAK SEMI (line %d)\n", yylineno);
-        generateCaseIR($2);
-        if (afterSwitchBB) {
-            builder.CreateBr(afterSwitchBB);
-        } else {
-            reportError("Error: No after_switch block for case %d (line %d)\n", $2, yylineno);
+/* A case's statements may be empty, so several labels can share one body:
+   case 1: case 2: x = 5; break; */
+case_item:
+    case_label stmt_list_opt { printf("Expanding rule: case_item → case_label stmt_list_opt (line %d)\n", yylineno); }
+    ;
+
+/* case_label reduces as soon as "case 2:" is read, BEFORE that case's
+   statements, so they are generated inside the new case block. */
+case_label:
+    CASE NUMBER COLON {
+        printf("Expanding rule: case_label → CASE NUMBER COLON (line %d)\n", yylineno);
+        if (generateCaseIR($2) != 0) {
+            reportError("Semantic Error: Duplicate case value %d in switch (line %d)\n", $2, yylineno);
         }
     }
-    | DEFAULT COLON stmt_list BREAK SEMI {
-        printf("Expanding rule: case_stmt → DEFAULT COLON stmt_list BREAK SEMI (line %d)\n", yylineno);
-        generateDefaultCaseIR();
-        if (afterSwitchBB) {
-            builder.CreateBr(afterSwitchBB);
-        } else {
-            reportError("Error: No after_switch block for default case (line %d)\n", yylineno);
+    | CASE MINUS NUMBER COLON {
+        printf("Expanding rule: case_label → CASE MINUS NUMBER COLON (line %d)\n", yylineno);
+        if (generateCaseIR(-$3) != 0) {
+            reportError("Semantic Error: Duplicate case value %d in switch (line %d)\n", -$3, yylineno);
         }
     }
-    | DEFAULT COLON stmt_list {
-        printf("Expanding rule: case_stmt → DEFAULT COLON stmt_list (line %d)\n", yylineno);
-        generateDefaultCaseIR();
-        if (afterSwitchBB) {
-            builder.CreateBr(afterSwitchBB);
-        } else {
-            reportError("Error: No after_switch block for default case (line %d)\n", yylineno);
+    | DEFAULT COLON {
+        printf("Expanding rule: case_label → DEFAULT COLON (line %d)\n", yylineno);
+        if (generateDefaultCaseIR() != 0) {
+            reportError("Semantic Error: Multiple default labels in switch (line %d)\n", yylineno);
         }
     }
     ;

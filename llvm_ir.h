@@ -29,8 +29,6 @@ extern "C" {
 extern llvm::LLVMContext context;
 extern llvm::Module* module;
 extern llvm::IRBuilder<> builder;
-extern llvm::BasicBlock* afterSwitchBB;
-extern llvm::SwitchInst* currentSwitchInst;
 
 void initLLVM(const std::string& moduleName);
 llvm::Type* getLLVMType(SymbolType type);
@@ -59,9 +57,12 @@ llvm::Value* generateConditionIR(llvm::Value* value);
 IfBlocks* generateIfStartIR(llvm::Value* cond);
 void generateIfElseIR(IfBlocks* blocks);
 void generateIfEndIR(IfBlocks* blocks);
-void generateSwitchIR(llvm::Value* expr);
-void generateCaseIR(int value);
-void generateDefaultCaseIR();
+void generateSwitchStartIR(llvm::Value* value);
+int generateCaseIR(int value);
+int generateDefaultCaseIR();
+void generateSwitchEndIR();
+bool generateBreakIR();
+bool generateContinueIR();
 bool writeIRToFile(const std::string& filename);
 
 #ifdef __cplusplus

@@ -63,6 +63,7 @@ YYSTYPE yylval;  // Declare yylval for standalone mode
 #define FLOATNUMBER 46
 #define LBRACKET 47
 #define RBRACKET 48
+#define CONTINUE 49
 #else
 #include "parser.tab.h"
 #endif
@@ -109,6 +110,7 @@ NEWLINE \n
 "true"              { printf("Processing token at line %d: TRUE, Lexeme: %s\n", yylineno, yytext); return return_token(TRUE); }
 "false"             { printf("Processing token at line %d: FALSE, Lexeme: %s\n", yylineno, yytext); return return_token(FALSE); }
 "break"             { printf("Processing token at line %d: BREAK, Lexeme: %s\n", yylineno, yytext); return return_token(BREAK); }
+"continue"          { printf("Processing token at line %d: CONTINUE, Lexeme: %s\n", yylineno, yytext); return return_token(CONTINUE); }
 "default"           { printf("Processing token at line %d: DEFAULT, Lexeme: %s\n", yylineno, yytext); return return_token(DEFAULT); }
 "<="                { printf("Processing token at line %d: LE, Lexeme: %s\n", yylineno, yytext); return return_token(LE); }
 "<"                 { printf("Processing token at line %d: LT, Lexeme: %s\n", yylineno, yytext); return return_token(LT); }
