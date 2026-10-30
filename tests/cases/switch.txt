@@ -1,0 +1,21 @@
+# Each line: expected exit code | expected output (- = don't check, \n = newline) | program
+# Lines starting with # are ignored. Run all tests with: make test
+
+20|-|int main() { int a = 2; int r = 0; switch (a) { case 1: r = 10; break; case 2: r = 20; break; default: r = 30; } return r; }
+30|-|int main() { int a = 7; int r = 0; switch (a) { case 1: r = 10; break; case 2: r = 20; break; default: r = 30; } return r; }
+0|-|int main() { int a = 7; int r = 0; switch (a) { case 1: r = 10; break; case 2: r = 20; break; } return r; }
+11|-|int main() { int a = 1; int r = 0; switch (a) { case 1: r = r + 1; case 2: r = r + 10; break; } return r; }
+5|-|int main() { int a = 2; int r = 0; switch (a) { case 1: case 2: r = 5; break; case 3: r = 6; break; } return r; }
+3|-|int main() { int a = 3; int r = 0; switch (a) { case 1: r = 1; break; default: r = 9; break; case 3: r = 3; break; } return r; }
+9|-|int main() { int a = 7; int r = 0; switch (a) { case 1: r = 1; break; default: r = 9; break; case 3: r = 3; break; } return r; }
+4|-|int main() { int a = -1; int r = 0; switch (a) { case -1: r = 4; break; case 1: r = 5; break; } return r; }
+32|-|int main() { int e = 0; int o = 0; for (int i = 0; i < 5; i++) { switch (i % 2) { case 0: e = e + 1; break; default: o = o + 1; } } return e * 10 + o; }
+7|-|int main() { int i = 0; while (1 > 0) { i++; if (i == 7) { break; } } return i; }
+25|-|int main() { int s = 0; for (int i = 0; i < 10; i++) { if (i % 2 == 0) { continue; } s = s + i; } return s; }
+12|-|int main() { int i = 0; int s = 0; while (i < 5) { i++; if (i == 3) { continue; } s = s + i; } return s; }
+6|-|int main() { int c = 0; for (int i = 0; i < 3; i++) { for (int j = 0; j < 10; j++) { if (j == 2) { break; } c = c + 1; } } return c; }
+30|-|int f(int x) { switch (x) { case 1: return 10; default: return 20; } } int main() { return f(1) + f(5); }
+1|-|int main() { int x = 1; return x; x = 2; }
+0|ten|int main() { int n = 10; switch (n) { case 5: printf("five"); break; case 10: printf("ten"); break; default: printf("other"); } return 0; }
+22|-|int main() { int a = 1; int b = 2; int r = 0; switch (a) { case 1: switch (b) { case 2: r = 22; break; default: r = 21; } break; default: r = 9; } return r; }
+3|-|int main() { int s = 0; for (int i = 0; i < 5; i++) { switch (i) { case 1: continue; case 3: continue; default: s = s + 1; } } return s; }

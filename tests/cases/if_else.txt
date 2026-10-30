@@ -1,0 +1,24 @@
+# Each line: expected exit code | expected output (- = don't check, \n = newline) | program
+# Lines starting with # are ignored. Run all tests with: make test
+
+1|-|int main() { int x = 5; if (x > 3) { x = 1; } else { x = 0; } return x; }
+0|-|int main() { int x = 2; if (x > 3) { x = 1; } else { x = 0; } return x; }
+15|-|int main() { int x = 5; if (x > 3) { x = x + 10; } return x; }
+1|-|int main() { int x = 1; if (x > 3) { x = x + 10; } return x; }
+1|-|int main() { int a = 1; int b = 1; int r = 0; if (a > 0) { if (b > 0) { r = 1; } else { r = 2; } } else { r = 3; } return r; }
+2|-|int main() { int a = 1; int b = 0; int r = 0; if (a > 0) { if (b > 0) { r = 1; } else { r = 2; } } else { r = 3; } return r; }
+3|-|int main() { int a = 0; int b = 1; int r = 0; if (a > 0) { if (b > 0) { r = 1; } else { r = 2; } } else { r = 3; } return r; }
+2|-|int main() { int s = 75; int g = 0; if (s >= 90) { g = 4; } else if (s >= 80) { g = 3; } else if (s >= 70) { g = 2; } else { g = 1; } return g; }
+4|-|int main() { int s = 95; int g = 0; if (s >= 90) { g = 4; } else if (s >= 80) { g = 3; } else if (s >= 70) { g = 2; } else { g = 1; } return g; }
+1|-|int main() { int s = 10; int g = 0; if (s >= 90) { g = 4; } else if (s >= 80) { g = 3; } else if (s >= 70) { g = 2; } else { g = 1; } return g; }
+21|-|int f(int n) { if (n > 0) { return 1; } else { return 2; } } int main() { return f(5) + f(-1) * 10; }
+10|-|int abs(int n) { if (n < 0) { return -n; } return n; } int main() { return abs(-7) + abs(3); }
+120|-|int factorial(int n) { if (n <= 1) { return 1; } return n * factorial(n - 1); } int main() { return factorial(5); }
+4|-|int main() { int x = 3; if (x) { return 4; } return 5; }
+5|-|int main() { int x = 0; if (x) { return 4; } return 5; }
+7|-|int main() { int a = 3; int b = 2; if (a > 1 && b < 5) { return 7; } return 8; }
+8|-|int main() { int a = 3; int b = 9; if (a > 1 && b < 5) { return 7; } return 8; }
+9|-|int main() { int x = 0; if (1 > 0) { int t = 9; x = t; } return x; }
+6|-|int main() { float f = 2.5; if (f) { return 6; } return 0; }
+3|-|int g; void set(int v) { if (v > 0) { g = v; } else { g = 0; } } int main() { set(3); return g; }
+0|positive\nzero|void show(int n) { if (n > 0) { printf("positive"); } else if (n < 0) { printf("negative"); } else { printf("zero"); } } int main() { show(4); show(0); return 0; }

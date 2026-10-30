@@ -1,0 +1,16 @@
+# Each line: expected exit code | expected output (- = don't check, \n = newline) | program
+# Lines starting with # are ignored. Run all tests with: make test
+
+0|42\n43|int main() { int x = 42; printf(x); printf(x + 1); return 0; }
+0|1.500000|int main() { float f = 1.5; printf(f); return 0; }
+0|1|int main() { bool b = true; printf(b); return 0; }
+0|Sum: 15|int main() { int s = 15; printf("Sum: ", s); return 0; }
+0|x=1 y=2|int main() { int x = 1; int y = 2; printf("x=%d y=%d\n", x, y); return 0; }
+0|hello|int main() { printf("hello"); return 0; }
+0|1 2.500000 3|int main() { int a = 1; float b = 2.5; int c = 3; printf(a, b, c); return 0; }
+0|tab\there|int main() { printf("tab\there"); return 0; }
+0|f=2.50|int main() { float f = 2.5; printf("f=%.2f\n", f); return 0; }
+0|a\nb\nc|void p(int n) { printf(n); } int main() { printf("a"); printf("b"); printf("c"); return 0; }
+5|7|int add(int a, int b) { return a + b; } int main() { printf(add(3, 4)); return 5; }
+0|Done\nnext|int main() { printf("Done\n"); printf("next"); return 0; }
+0|a\n5|int main() { int x = 5; printf("a\n", x); return 0; }

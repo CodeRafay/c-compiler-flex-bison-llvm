@@ -7,7 +7,7 @@ CFLAGS = -g -Wall -Wno-unused-function -Wno-unused-variable `$(LLVM_CONFIG) --cx
 
 LDFLAGS = `$(LLVM_CONFIG) --ldflags --libs core analysis native scalaropts`
 
-.PHONY: all clean
+.PHONY: all clean test
 
 all: compiler
 
@@ -25,6 +25,10 @@ symbol_table.o: symbol_table.c symbol_table.h
 
 llvm_ir.o: llvm_ir.c llvm_ir.h
 	$(CC) $(CFLAGS) -c llvm_ir.c
+
+# Build, then run every test in tests/ (see tests/run_tests.sh)
+test: compiler
+	./tests/run_tests.sh
 
 clean:
 	rm -f compiler lexer lex.yy.c parser.tab.c parser.tab.h parser.output *.o output.ll output.bc

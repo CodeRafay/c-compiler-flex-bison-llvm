@@ -1,0 +1,30 @@
+# Programs the compiler must REJECT: it must print the message, exit with 1,
+# and write no output.ll.
+# Each line: part of the expected error message | program
+
+Variable 'y' not declared|int main() { int x = y + 2; return x; }
+Incorrect number of arguments|int add(int a, int b) { return a + b; } int main() { return add(1); }
+Variable 'n' not declared|int f(int n) { return n; } int main() { return n; }
+Cannot read variable x outside a function|int x = 1; int g = x; int main() { return g; }
+Variable 'x' redeclared|int main() { int x = 1; int x = 2; return x; }
+needs a name in a function definition|int f(int) { return 1; } int main() { return 0; }
+Duplicate parameter 'a'|int f(int a, int a) { return a; } int main() { return 0; }
+Conflicting types for function f|int f(int a); int f(float a) { return 1; } int main() { return 0; }
+already has a body|int f() { return 1; } int f() { return 2; } int main() { return 0; }
+'x' is not an array|int main() { int x; x[0] = 1; return 0; }
+must be used with an index|int main() { int a[3]; return a; }
+out of bounds for array 'a' of size 3|int main() { int a[3]; return a[3]; }
+Cannot assign to array 'a' as a whole|int main() { int a[3]; a = 5; return 0; }
+Index of array 'a' must be an int|int main() { int a[3]; a[1.5] = 2; return 0; }
+Cannot assign incompatible type to element|int main() { int a[3]; a[0] = 2.5; return 0; }
+must have a size greater than 0|int main() { int a[0]; return 0; }
+Variable 'undeclared' not declared|int main() { if (undeclared > 0) { return 1; } return 0; }
+Variable 'nope' not declared|int main() { while (nope > 0) { } return 0; }
+Variable 'i' not declared|int main() { for (int i = 0; i < 3; i++) { } return i; }
+'break' is only allowed inside a loop or switch|int main() { break; return 0; }
+'continue' is only allowed inside a loop|int main() { int a = 1; switch (a) { case 1: continue; } return 0; }
+Duplicate case value 1|int main() { int a = 1; switch (a) { case 1: a = 2; break; case 1: a = 3; break; } return a; }
+Multiple default labels|int main() { int a = 1; switch (a) { default: a = 2; break; default: a = 3; } return a; }
+Switch expression must be an int|int main() { switch (1.5) { case 1: break; } return 0; }
+Syntax Error|int main() { int x = 1 return x; }
+must be initialized with a constant|float f = 1; int main() { return 0; }

@@ -1,0 +1,15 @@
+# Each line: expected exit code | expected output (- = don't check, \n = newline) | program
+# Lines starting with # are ignored. Run all tests with: make test
+
+5|-|int main() { return 2 + 3; }
+6|-|int main() { int x = 10 - 4; return x; }
+42|-|int main() { int a = 6; int b = 7; int c = a * b; return c; }
+10|-|int main() { int a = 20; int b = a / 4 + 3 * 2 - 1; return b; }
+8|-|int main() { int x = 3; x = x + 5; return x; }
+4|-|int main() { int x = 5; return x-1; }
+7|-|int main() { return -3 + 10; }
+14|-|int main() { int x = 4; return 10 - -x; }
+3|-|int g = -5; int main() { return g + 8; }
+1|-|int main() { float f = -1.5; return 1; }
+250|-|int main() { int a = 2; int b = 3; return -a * b + 256; }
+2|-|int main() { int a = 9; return a-7; }

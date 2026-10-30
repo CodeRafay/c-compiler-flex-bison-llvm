@@ -1,0 +1,10 @@
+# The sample programs in testCaseExamples/.
+# Each line: file | expected compiler exit code | expected program exit code | expected output
+# (program columns are ignored when the compiler is expected to fail; \n = newline)
+
+factorial.c|0|0|120
+sum.c|0|0|15
+test.c|0|11|11
+test2.c|0|0|Condition not met!\nWhile Loop: 0\nWhile Loop: 1\nWhile Loop: 2\nWhile Loop: 3\nWhile Loop: 4\nFor Loop: 0\nFor Loop: 1\nFor Loop: 2\nFor Loop: 3\nFor Loop: 4\nNumber is 10\nAddition result: 30\nFactorial of 5: 120\nHello from a function!\n4 is even
+semanticTest.cpp|1|-|-
+test1.c|1|-|-

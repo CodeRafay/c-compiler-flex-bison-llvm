@@ -82,6 +82,21 @@ If the program has any syntax, semantic, or type errors, `./compiler` prints the
 
 Run `make clean` to remove all build artifacts.
 
+### Run the tests
+
+```sh
+make test        # builds the compiler, then runs every test
+./tests/run_tests.sh -v   # same, but also lists the passing tests
+```
+
+The tests live in [`tests/`](tests/):
+
+- `tests/cases/*.txt`: small programs, one per line, grouped by feature. Each is compiled, run with `lli`, and checked against its expected exit code and output.
+- `tests/errors.txt`: incorrect programs. The compiler must report the expected error, exit with 1, and write no `output.ll`.
+- `tests/examples.txt`: the sample programs in `testCaseExamples/`.
+
+To add a test, add a line to the matching file. The format is explained at the top of each file.
+
 ## Example
 
 **Input** (`example.c`):
@@ -156,7 +171,8 @@ flowchart LR
 ├── parser.y             # Bison grammar, semantic actions, main()
 ├── symbol_table.c/.h    # Scoped symbol table
 ├── llvm_ir.c/.h         # LLVM IR code generation
-├── Makefile             # Build rules
+├── Makefile             # Build rules (make, make test, make clean)
+├── tests/               # Automated tests (make test)
 └── testCaseExamples/    # Sample input programs
 ```
 
@@ -183,7 +199,7 @@ This is an active learning project. The front end is complete; code generation i
 - [x] Fix control flow code generation (`if`/`else`, `while`, `for`, `switch`)
 - [x] Accept negative `case` labels (`case -1:`) in the `switch` rewrite
 - [x] `break`/`continue` inside loops (with the `switch` rewrite, which makes `break` a normal statement)
-- [ ] Automated test suite (`make test`) with expected outputs
+- [x] Automated test suite (`make test`) with expected outputs
 - [ ] Hide debug output behind a `-v` flag
 - [x] Stop writing IR when semantic errors occur
 - [ ] Optimization passes (mem2reg, constant folding)
@@ -215,7 +231,7 @@ Yes. It's meant as a learning reference. Please follow your institution's academ
 Contributions are welcome, especially fixes on the [roadmap](#roadmap).
 
 1. Fork the repo and create a branch: `git checkout -b fix/while-loop-codegen`
-2. Make a focused change, then rebuild and test: `make clean && make && ./compiler <file> && lli output.ll; echo $?`
+2. Make a focused change, add a test for it in `tests/`, and check that `make test` passes
 3. Open a pull request that describes what you changed and how you tested it.
 
 Bug reports with a minimal input program are very helpful.
