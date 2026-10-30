@@ -128,7 +128,7 @@ function_definition:
         Param* temp = $4;
         while (temp != NULL) {
             printf("DEBUG: Inserting parameter %s, type=%d\n", temp->name, temp->type);
-            if (!insertVariable(temp->name, temp->type, currentScope, temp->value)) {
+            if (!insertVariable(temp->name, temp->type, currentScope, temp->value, 0)) {
                 reportError("Semantic Error: Duplicate parameter '%s' in function '%s' (line %d)\n", temp->name, $2, yylineno);
                 YYERROR;
             }
@@ -267,7 +267,7 @@ stmt:
         Symbol* lhs = lookup($1);
         if (!lhs) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
-        } else if (isArrayVariable(lhs->value)) {
+        } else if (lhs->arraySize > 0) {
             reportError("Semantic Error: Cannot assign to array '%s' as a whole; assign an element, e.g. %s[0] = ... (line %d)\n", $1, $1, yylineno);
         } else {
             if ($3 && lhs->type != ($3->getType()->isIntegerTy(32) ? TYPE_INT : ($3->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL))) {
@@ -285,7 +285,7 @@ stmt:
             if (sym->type != ($6->getType()->isIntegerTy(32) ? TYPE_INT : ($6->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL))) {
                 reportError("Type Error: Cannot assign incompatible type to element of '%s' (line %d)\n", $1, yylineno);
             } else {
-                generateArrayStoreIR(sym->value, $3, $6);
+                generateArrayStoreIR(sym->value, sym->type, sym->arraySize, $3, $6);
             }
         }
         $$ = nullptr;
@@ -553,7 +553,7 @@ var_decl:
             reportError("Semantic Error: Variable '%s' redeclared in scope %d (line %d)\n", $1, currentScope, yylineno);
             YYERROR;
         }
-        insertVariable($1, currentType, currentScope, alloc);
+        insertVariable($1, currentType, currentScope, alloc, 0);
     }
     | IDENTIFIER ASSIGN expr {
         printf("Expanding rule: var_decl → IDENTIFIER ASSIGN expr (line %d)\n", yylineno);
@@ -567,7 +567,7 @@ var_decl:
             reportError("Semantic Error: Variable '%s' redeclared in scope %d (line %d)\n", $1, currentScope, yylineno);
             YYERROR;
         }
-        insertVariable($1, currentType, currentScope, alloc);
+        insertVariable($1, currentType, currentScope, alloc, 0);
         if (!$3) {
             reportError("Error: Expression for assignment to '%s' is invalid (line %d)\n", $1, yylineno);
             YYERROR;
@@ -601,7 +601,7 @@ var_decl:
             reportError("Error: Failed to generate array declaration for '%s' (line %d)\n", $1, yylineno);
             YYERROR;
         }
-        insertVariable($1, currentType, currentScope, alloc);
+        insertVariable($1, currentType, currentScope, alloc, $3);
     }
     ;
 
@@ -740,7 +740,7 @@ expr:
         if (!sym) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
             $$ = nullptr;
-        } else if (isArrayVariable(sym->value)) {
+        } else if (sym->arraySize > 0) {
             reportError("Semantic Error: Array '%s' must be used with an index, e.g. %s[0] (line %d)\n", $1, $1, yylineno);
             $$ = nullptr;
         } else if (sym->kind == VAR) {
@@ -761,7 +761,7 @@ expr:
     | IDENTIFIER LBRACKET expr RBRACKET {
         printf("Expanding rule: expr → IDENTIFIER LBRACKET expr RBRACKET (line %d)\n", yylineno);
         Symbol* sym = checkArrayAccess($1, $3);
-        $$ = sym ? generateArrayLoadIR(sym->value, $3) : nullptr;
+        $$ = sym ? generateArrayLoadIR(sym->value, sym->type, sym->arraySize, $3) : nullptr;
     }
     | LPAREN expr RPAREN {
         printf("Expanding rule: expr → LPAREN expr RPAREN (line %d)\n", yylineno);
@@ -885,7 +885,7 @@ Symbol* checkArrayAccess(const char* name, llvm::Value* index) {
         reportError("Semantic Error: Variable '%s' not declared (line %d)\n", name, yylineno);
         return NULL;
     }
-    if (!isArrayVariable(sym->value)) {
+    if (sym->arraySize == 0) {
         reportError("Semantic Error: '%s' is not an array (line %d)\n", name, yylineno);
         return NULL;
     }
@@ -893,9 +893,9 @@ Symbol* checkArrayAccess(const char* name, llvm::Value* index) {
         reportError("Semantic Error: Index of array '%s' must be an int (line %d)\n", name, yylineno);
         return NULL;
     }
-    if (llvm::ConstantInt* constIndex = llvm::dyn_cast<llvm::ConstantInt>(index)) {
-        long long i = constIndex->getSExtValue();
-        int size = getArraySize(sym->value);
+    if (llvm::isa<llvm::ConstantInt>(index)) {
+        long long i = ((llvm::ConstantInt*)index)->getSExtValue();
+        int size = sym->arraySize;
         if (i < 0 || i >= size) {
             reportError("Semantic Error: Index %lld is out of bounds for array '%s' of size %d (line %d)\n", i, name, size, yylineno);
             return NULL;

@@ -31,6 +31,7 @@ struct Symbol {
     int scope;
     int defined; // For functions: 1 if defined, 0 if declared
     llvm::Value* value; // For variables
+    int arraySize; // For arrays: number of elements; 0 = not an array
     llvm::Function* function; // For functions
     struct Param* params; // For function parameters
     struct Symbol* next;
@@ -39,7 +40,7 @@ struct Symbol {
 void initSymbolTable();
 Symbol* lookup(const char* name);
 Symbol* lookupFunction(const char* name);
-int insertVariable(const char* name, SymbolType type, int scope, llvm::Value* value);
+int insertVariable(const char* name, SymbolType type, int scope, llvm::Value* value, int arraySize);
 void insertFunction(const char* name, SymbolType returnType, Param* params, int isDefinition, llvm::Function* function);
 void exitScope(int scope);
 int checkFunctionCallArgs(const char* funcName, Param* passedArgs);

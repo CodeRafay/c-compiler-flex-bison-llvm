@@ -31,11 +31,9 @@ llvm::Value* generateVariableDeclIR(const std::string& name, SymbolType type, in
 bool setGlobalInitializerIR(llvm::Value* global, llvm::Value* value);
 bool insideFunction();
 llvm::Value* generateArrayDeclIR(const std::string& name, SymbolType type, int size, int scope);
-bool isArrayVariable(llvm::Value* var);
-int getArraySize(llvm::Value* var);
-llvm::Value* getArrayElementPtrIR(llvm::Value* array, llvm::Value* index);
-llvm::Value* generateArrayLoadIR(llvm::Value* array, llvm::Value* index);
-void generateArrayStoreIR(llvm::Value* array, llvm::Value* index, llvm::Value* value);
+llvm::Value* getArrayElementPtrIR(llvm::Value* array, SymbolType elemType, int size, llvm::Value* index);
+llvm::Value* generateArrayLoadIR(llvm::Value* array, SymbolType elemType, int size, llvm::Value* index);
+void generateArrayStoreIR(llvm::Value* array, SymbolType elemType, int size, llvm::Value* index, llvm::Value* value);
 llvm::Value* generateExprIR(SymbolType exprType, const std::string& op, llvm::Value* lhs, llvm::Value* rhs, const std::string& ident, int number, float floatNum, bool boolVal);
 llvm::Value* generateNegateIR(llvm::Value* value);
 llvm::Value* generateLogicalIR(const std::string& op, llvm::Value* lhs, llvm::Value* rhs);

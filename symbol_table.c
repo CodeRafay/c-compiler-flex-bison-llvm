@@ -33,7 +33,7 @@ Symbol* lookupFunction(const char* name) {
 
 // Returns 1 if inserted, 0 if the name is already declared in this scope
 // (the caller reports the error, since it knows the line number).
-int insertVariable(const char* name, SymbolType type, int scope, llvm::Value* value) {
+int insertVariable(const char* name, SymbolType type, int scope, llvm::Value* value, int arraySize) {
     Symbol* current = symbolTable;
     while (current != NULL) {
         if (strcmp(current->name, name) == 0 && current->scope == scope && current->kind == VAR) {
@@ -47,6 +47,7 @@ int insertVariable(const char* name, SymbolType type, int scope, llvm::Value* va
     sym->kind = VAR;
     sym->scope = scope;
     sym->value = value;
+    sym->arraySize = arraySize;
     sym->function = NULL;
     sym->params = NULL;
     sym->next = symbolTable;
@@ -70,6 +71,7 @@ void insertFunction(const char* name, SymbolType returnType, Param* params, int 
     sym->scope = 0; // Functions are global
     sym->defined = isDefinition;
     sym->value = NULL;
+    sym->arraySize = 0;
     sym->function = function;
     sym->params = params;
     sym->next = symbolTable;
@@ -80,16 +82,23 @@ void insertFunction(const char* name, SymbolType returnType, Param* params, int 
 // scope level (or deeper) is no longer visible, so remove it. Functions are
 // global (scope 0) and are never removed.
 void exitScope(int scope) {
-    Symbol** link = &symbolTable;
-    while (*link != NULL) {
-        Symbol* current = *link;
+    Symbol* prev = NULL;
+    Symbol* current = symbolTable;
+    while (current != NULL) {
+        Symbol* next = current->next;
         if (current->kind == VAR && current->scope >= scope) {
-            *link = current->next; // unlink, then free
+            // Unlink it from the list, then free it
+            if (prev != NULL) {
+                prev->next = next;
+            } else {
+                symbolTable = next;
+            }
             free(current->name);
             free(current);
         } else {
-            link = &current->next;
+            prev = current;
         }
+        current = next;
     }
 }
 

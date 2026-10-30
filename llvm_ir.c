@@ -183,9 +183,13 @@ llvm::Value* generateVariableDeclIR(const std::string& name, SymbolType type, in
 // must be a constant known at compile time (e.g. 5 or 2 + 3, which IRBuilder
 // folds into a single constant). Returns false if it isn't.
 bool setGlobalInitializerIR(llvm::Value* global, llvm::Value* value) {
-    llvm::GlobalVariable* gv = llvm::dyn_cast<llvm::GlobalVariable>(global);
-    llvm::Constant* init = llvm::dyn_cast_or_null<llvm::Constant>(value);
-    if (!gv || !init || init->getType() != gv->getValueType()) {
+    if (!global || !value || !llvm::isa<llvm::Constant>(value)) {
+        return false;
+    }
+    // At scope 0, generateVariableDeclIR always creates a GlobalVariable
+    llvm::GlobalVariable* gv = (llvm::GlobalVariable*)global;
+    llvm::Constant* init = (llvm::Constant*)value;
+    if (init->getType() != gv->getValueType()) {
         return false;
     }
     gv->setInitializer(init);
@@ -214,51 +218,31 @@ llvm::Value* generateArrayDeclIR(const std::string& name, SymbolType type, int s
     return builder.CreateAlloca(arrayType, nullptr, name);
 }
 
-// An array variable is a pointer to a whole [N x type] block of memory.
-// Returns that array type, or nullptr if the variable is not an array.
-static llvm::ArrayType* getArrayType(llvm::Value* var) {
-    llvm::Type* t = nullptr;
-    if (auto* alloca = llvm::dyn_cast_or_null<llvm::AllocaInst>(var)) {
-        t = alloca->getAllocatedType();
-    } else if (auto* global = llvm::dyn_cast_or_null<llvm::GlobalVariable>(var)) {
-        t = global->getValueType();
-    }
-    return t ? llvm::dyn_cast<llvm::ArrayType>(t) : nullptr;
-}
-
-bool isArrayVariable(llvm::Value* var) {
-    return getArrayType(var) != nullptr;
-}
-
-int getArraySize(llvm::Value* var) {
-    llvm::ArrayType* arrayType = getArrayType(var);
-    return arrayType ? (int)arrayType->getNumElements() : 0;
-}
-
-// Address of arr[index]. GEP ("get element pointer") takes two indices here:
-// the first (0) steps through the pointer to the array itself, the second
+// Address of arr[index]. The array's element type and size come from the
+// symbol table. GEP ("get element pointer") takes two indices here: the
+// first (0) steps through the pointer to the array itself, the second
 // picks the element inside it. GEP only computes the address; it doesn't
 // read or write memory.
-llvm::Value* getArrayElementPtrIR(llvm::Value* array, llvm::Value* index) {
+llvm::Value* getArrayElementPtrIR(llvm::Value* array, SymbolType elemType, int size, llvm::Value* index) {
     std::cout << "DEBUG: Generating array element address\n";
-    llvm::ArrayType* arrayType = getArrayType(array);
-    if (!arrayType || !index) {
+    if (!array || !index) {
         return nullptr;
     }
+    llvm::Type* arrayType = llvm::ArrayType::get(getLLVMType(elemType), size);
     llvm::Value* zero = llvm::ConstantInt::get(context, llvm::APInt(32, 0));
     return builder.CreateInBoundsGEP(arrayType, array, {zero, index}, "elemptr");
 }
 
-llvm::Value* generateArrayLoadIR(llvm::Value* array, llvm::Value* index) {
-    llvm::Value* ptr = getArrayElementPtrIR(array, index);
+llvm::Value* generateArrayLoadIR(llvm::Value* array, SymbolType elemType, int size, llvm::Value* index) {
+    llvm::Value* ptr = getArrayElementPtrIR(array, elemType, size, index);
     if (!ptr) {
         return nullptr;
     }
-    return builder.CreateLoad(getArrayType(array)->getElementType(), ptr, "elem");
+    return builder.CreateLoad(getLLVMType(elemType), ptr, "elem");
 }
 
-void generateArrayStoreIR(llvm::Value* array, llvm::Value* index, llvm::Value* value) {
-    llvm::Value* ptr = getArrayElementPtrIR(array, index);
+void generateArrayStoreIR(llvm::Value* array, SymbolType elemType, int size, llvm::Value* index, llvm::Value* value) {
+    llvm::Value* ptr = getArrayElementPtrIR(array, elemType, size, index);
     if (ptr && value) {
         builder.CreateStore(value, ptr);
     }
@@ -402,7 +386,8 @@ void generatePrintfIR(const std::string& format, const std::vector<llvm::Value*>
     llvm::Function* printfFunc = getPrintfFunction();
     std::vector<llvm::Value*> callArgs;
     callArgs.push_back(builder.CreateGlobalStringPtr(format, "format"));
-    for (llvm::Value* arg : args) {
+    for (size_t i = 0; i < args.size(); i++) {
+        llvm::Value* arg = args[i];
         // C's rule for variadic functions like printf: a float argument is
         // passed as a double, and small integers (our bool, i1) as an int.
         // Without this, printf reads garbage (e.g. 0.000000 for 1.5).
