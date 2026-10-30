@@ -13,3 +13,13 @@
 1|-|int main() { float f = -1.5; return 1; }
 250|-|int main() { int a = 2; int b = 3; return -a * b + 256; }
 2|-|int main() { int a = 9; return a-7; }
+1|-|int main() { float f = 3; if (f > 2.5) { return 1; } return 0; }
+1|-|int main() { float f; f = 4; if (f > 3.5) { return 1; } return 0; }
+1|-|int main() { float a[2]; a[0] = 1; if (a[0] > 0.5) { return 1; } return 0; }
+1|-|int main() { float f = 0; for (f = 0; f < 3; f = f + 1) { } if (f > 2.5) { return 1; } return 0; }
+1|-|int main() { float f = 1.5; if (f > 1) { return 1; } return 0; }
+1|-|int main() { int x = 2; if (x > 1.5) { return 1; } return 0; }
+1|3.500000|int main() { float f = 1.5; int x = 2; float y = x + f; printf(y); return 1; }
+4|2.500000|int main() { int a = 5; float h = a / 2.0; printf(h); return 4; }
+1|-|int main() { int x = 3; bool b = true; if (x && b) { return 1; } return 0; }
+1|-|int main() { bool b = true; if (b == true) { return 1; } return 0; }

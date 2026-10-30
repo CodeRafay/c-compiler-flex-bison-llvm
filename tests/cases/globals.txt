@@ -8,3 +8,4 @@
 3|-|int counter; void inc() { counter = counter + 1; } int main() { inc(); inc(); inc(); return counter; }
 24|-|int a, b; float x; int main() { a = 4; b = 6; x = 1.5; return a * b; }
 7|-|int g = 1; int main() { int g = 7; return g; }
+1|-|float g = 2; int main() { if (g > 1.5) { return 1; } return 0; }

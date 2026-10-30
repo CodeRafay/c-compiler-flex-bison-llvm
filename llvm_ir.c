@@ -329,6 +329,12 @@ llvm::Value* generateLogicalIR(const std::string& op, llvm::Value* lhs, llvm::Va
     if (!lhs || (op != "!" && !rhs)) {
         return nullptr; // an operand already had an error (e.g. undeclared variable)
     }
+    // Like C, any number can be used as true/false (non-zero = true), so turn
+    // both sides into bools first: x && flag works even if x is an int.
+    lhs = generateConditionIR(lhs);
+    if (rhs) {
+        rhs = generateConditionIR(rhs);
+    }
     if (op == "&&") {
         return builder.CreateAnd(lhs, rhs, "andtmp");
     } else if (op == "||") {
@@ -340,12 +346,37 @@ llvm::Value* generateLogicalIR(const std::string& op, llvm::Value* lhs, llvm::Va
     return nullptr;
 }
 
+// C's rule for mixing number types, simplified: when an int meets a float
+// in an expression, the int is converted to float first (2 + 0.5 becomes
+// 2.0 + 0.5). Returns false if the two types can't be combined (e.g. a bool
+// and an int); the operands are then left unchanged.
+bool promoteOperandsIR(llvm::Value** lhs, llvm::Value** rhs) {
+    llvm::Type* leftType = (*lhs)->getType();
+    llvm::Type* rightType = (*rhs)->getType();
+    if (leftType == rightType) {
+        return true;
+    }
+    llvm::Type* floatType = llvm::Type::getFloatTy(context);
+    if (leftType->isFloatTy() && rightType->isIntegerTy(32)) {
+        *rhs = builder.CreateSIToFP(*rhs, floatType, "tofloat");
+        return true;
+    }
+    if (rightType->isFloatTy() && leftType->isIntegerTy(32)) {
+        *lhs = builder.CreateSIToFP(*lhs, floatType, "tofloat");
+        return true;
+    }
+    return false;
+}
+
 llvm::Value* generateRelationalIR(const std::string& op, llvm::Value* lhs, llvm::Value* rhs) {
     if (verbose) std::cout << "DEBUG: Generating relational op " << op << std::endl;
     if (!lhs || !rhs) {
         return nullptr; // an operand already had an error (e.g. undeclared variable)
     }
-    if (lhs->getType()->isIntegerTy(32)) {
+    if (!promoteOperandsIR(&lhs, &rhs)) {
+        return nullptr; // e.g. comparing a bool with an int
+    }
+    if (lhs->getType()->isIntegerTy()) { // int, or bool (flag == true)
         if (op == "==") return builder.CreateICmpEQ(lhs, rhs, "eqtmp");
         if (op == "!=") return builder.CreateICmpNE(lhs, rhs, "neqtmp");
         if (op == "<") return builder.CreateICmpSLT(lhs, rhs, "lttmp");
@@ -374,14 +405,39 @@ void generateAssignIR(const std::string& ident, llvm::Value* value) {
     }
 }
 
-void generateReturnIR(llvm::Value* value) {
+// Prepare a value to be stored in a variable (or returned) of type target.
+// Like C, an int may be used where a float is expected: 3 becomes 3.0, and
+// no information is lost. Any other mismatch (e.g. a float into an int)
+// is a type error, and nullptr is returned.
+llvm::Value* convertForAssignIR(llvm::Value* value, llvm::Type* target) {
+    if (!value || !target) {
+        return nullptr;
+    }
+    if (value->getType() == target) {
+        return value;
+    }
+    if (target->isFloatTy() && value->getType()->isIntegerTy(32)) {
+        return builder.CreateSIToFP(value, target, "tofloat");
+    }
+    return nullptr;
+}
+
+// return value; (or return; when value is nullptr). Returns false if the
+// value doesn't match the function's return type.
+bool generateReturnIR(llvm::Value* value) {
     if (verbose) std::cout << "DEBUG: Generating return\n";
+    llvm::Type* returnType = builder.GetInsertBlock()->getParent()->getReturnType();
     if (value) {
+        value = convertForAssignIR(value, returnType);
+        if (!value) {
+            return false;
+        }
         builder.CreateRet(value);
     } else {
         builder.CreateRetVoid();
     }
     startBlockAfterJump();
+    return true;
 }
 
 llvm::Value* generateFunctionCallIR(const std::string& name, Param* args) {

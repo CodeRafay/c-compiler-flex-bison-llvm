@@ -43,9 +43,11 @@ void generateArrayStoreIR(llvm::Value* array, SymbolType elemType, int size, llv
 llvm::Value* generateExprIR(SymbolType exprType, const std::string& op, llvm::Value* lhs, llvm::Value* rhs, const std::string& ident, int number, float floatNum, bool boolVal);
 llvm::Value* generateNegateIR(llvm::Value* value);
 llvm::Value* generateLogicalIR(const std::string& op, llvm::Value* lhs, llvm::Value* rhs);
+bool promoteOperandsIR(llvm::Value** lhs, llvm::Value** rhs);
 llvm::Value* generateRelationalIR(const std::string& op, llvm::Value* lhs, llvm::Value* rhs);
 void generateAssignIR(const std::string& ident, llvm::Value* value);
-void generateReturnIR(llvm::Value* value);
+llvm::Value* convertForAssignIR(llvm::Value* value, llvm::Type* target);
+bool generateReturnIR(llvm::Value* value);
 llvm::Value* generateFunctionCallIR(const std::string& name, Param* args);
 void generatePrintfIR(const std::string& format, const std::vector<llvm::Value*>& args);
 void generateScanfIR(const std::string& ident, SymbolType type);

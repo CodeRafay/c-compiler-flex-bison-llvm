@@ -20,6 +20,8 @@ int yylex(void);
 Symbol* checkArrayAccess(const char* name, llvm::Value* index);
 void emitPrintf(const char* quoted, Param* args);
 void reportError(const char* format, ...);
+llvm::Value* arithmeticExpr(const char* op, const char* opName, llvm::Value* lhs, llvm::Value* rhs);
+llvm::Value* comparisonExpr(const char* op, llvm::Value* lhs, llvm::Value* rhs);
 int errorCount = 0; // semantic/type errors seen so far; any error = failed compile
 SymbolType currentType;
 int currentScope = 0;
@@ -268,11 +270,13 @@ stmt:
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
         } else if (lhs->arraySize > 0) {
             reportError("Semantic Error: Cannot assign to array '%s' as a whole; assign an element, e.g. %s[0] = ... (line %d)\n", $1, $1, yylineno);
-        } else {
-            if ($3 && lhs->type != ($3->getType()->isIntegerTy(32) ? TYPE_INT : ($3->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL))) {
+        } else if ($3) {
+            llvm::Value* value = convertForAssignIR($3, getLLVMType(lhs->type));
+            if (!value) {
                 reportError("Type Error: Cannot assign incompatible type to '%s' (line %d)\n", $1, yylineno);
+            } else {
+                generateAssignIR($1, value);
             }
-            generateAssignIR($1, $3);
         }
         $$ = nullptr;
     }
@@ -281,10 +285,11 @@ stmt:
         Symbol* sym = checkArrayAccess($1, $3);
         if (sym && $6) {
             // sym->type is the element type (int a[5] → TYPE_INT)
-            if (sym->type != ($6->getType()->isIntegerTy(32) ? TYPE_INT : ($6->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL))) {
+            llvm::Value* value = convertForAssignIR($6, getLLVMType(sym->type));
+            if (!value) {
                 reportError("Type Error: Cannot assign incompatible type to element of '%s' (line %d)\n", $1, yylineno);
             } else {
-                generateArrayStoreIR(sym->value, sym->type, sym->arraySize, $3, $6);
+                generateArrayStoreIR(sym->value, sym->type, sym->arraySize, $3, value);
             }
         }
         $$ = nullptr;
@@ -418,8 +423,20 @@ stmt:
             reportError("Semantic Error: Invalid return expression (line %d)\n", yylineno);
             YYERROR;
         }
-        debugPrint("Generating return for expr at %p\n", $2);
-        generateReturnIR($2);
+        if (builder.GetInsertBlock()->getParent()->getReturnType()->isVoidTy()) {
+            reportError("Semantic Error: A void function cannot return a value (line %d)\n", yylineno);
+        } else if (!generateReturnIR($2)) {
+            reportError("Type Error: Return value does not match the function's return type (line %d)\n", yylineno);
+        }
+        $$ = nullptr;
+    }
+    | RETURN SEMI {
+        debugPrint("Expanding rule: stmt → RETURN SEMI (line %d)\n", yylineno);
+        if (!builder.GetInsertBlock()->getParent()->getReturnType()->isVoidTy()) {
+            reportError("Semantic Error: This function must return a value (line %d)\n", yylineno);
+        } else {
+            generateReturnIR(nullptr);
+        }
         $$ = nullptr;
     }
     | switch_head LBRACE case_list RBRACE {
@@ -514,8 +531,13 @@ init_expr:
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
             $$ = nullptr;
         } else {
-            generateAssignIR($1, $3);
-            $$ = $3;
+            llvm::Value* value = convertForAssignIR($3, getLLVMType(lhs->type));
+            if (!value) {
+                reportError("Type Error: Cannot assign incompatible type to '%s' (line %d)\n", $1, yylineno);
+            } else {
+                generateAssignIR($1, value);
+            }
+            $$ = value;
         }
     }
     ;
@@ -554,8 +576,13 @@ update_expr:
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
             $$ = nullptr;
         } else {
-            generateAssignIR($1, $3);
-            $$ = $3;
+            llvm::Value* value = convertForAssignIR($3, getLLVMType(lhs->type));
+            if (!value) {
+                reportError("Type Error: Cannot assign incompatible type to '%s' (line %d)\n", $1, yylineno);
+            } else {
+                generateAssignIR($1, value);
+            }
+            $$ = value;
         }
     }
     ;
@@ -601,17 +628,18 @@ var_decl:
             reportError("Error: Expression for assignment to '%s' is invalid (line %d)\n", $1, yylineno);
             YYERROR;
         }
-        if ($3->getType()->isIntegerTy(32) ? TYPE_INT : ($3->getType()->isFloatTy() ? TYPE_FLOAT : TYPE_BOOL) != currentType) {
+        // int → float is converted automatically (int x = 2.5 is an error)
+        llvm::Value* value = convertForAssignIR($3, getLLVMType(currentType));
+        if (!value) {
             reportError("Type Error: Cannot assign incompatible type to '%s' (line %d)\n", $1, yylineno);
-        }
-        if (currentScope == 0) {
+        } else if (currentScope == 0) {
             // Global: no code runs at global scope, so instead of a store
             // the value becomes the global's initial value.
-            if (!setGlobalInitializerIR(alloc, $3)) {
+            if (!setGlobalInitializerIR(alloc, value)) {
                 reportError("Semantic Error: Global variable '%s' must be initialized with a constant of the same type (line %d)\n", $1, yylineno);
             }
         } else {
-            generateAssignIR($1, $3);
+            generateAssignIR($1, value);
         }
     }
     | IDENTIFIER LBRACKET NUMBER RBRACKET {
@@ -671,38 +699,23 @@ case_label:
 expr:
     expr PLUS expr {
         debugPrint("Expanding rule: expr → expr PLUS expr (line %d)\n", yylineno);
-        if ($1 && $3 && $1->getType() != $3->getType()) {
-            reportError("Type Error: Mismatched types in addition at line %d\n", yylineno);
-        }
-        $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "+", $1, $3, "", 0, 0.0, false);
+        $$ = arithmeticExpr("+", "addition", $1, $3);
     }
     | expr MINUS expr {
         debugPrint("Expanding rule: expr → expr MINUS expr (line %d)\n", yylineno);
-        if ($1 && $3 && $1->getType() != $3->getType()) {
-            reportError("Type Error: Mismatched types in subtraction at line %d\n", yylineno);
-        }
-        $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "-", $1, $3, "", 0, 0.0, false);
+        $$ = arithmeticExpr("-", "subtraction", $1, $3);
     }
     | expr MULT expr {
         debugPrint("Expanding rule: expr → expr MULT expr (line %d)\n", yylineno);
-        if ($1 && $3 && $1->getType() != $3->getType()) {
-            reportError("Type Error: Mismatched types in multiplication at line %d\n", yylineno);
-        }
-        $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "*", $1, $3, "", 0, 0.0, false);
+        $$ = arithmeticExpr("*", "multiplication", $1, $3);
     }
     | expr DIV expr {
         debugPrint("Expanding rule: expr → expr DIV expr (line %d)\n", yylineno);
-        if ($1 && $3 && $1->getType() != $3->getType()) {
-            reportError("Type Error: Mismatched types in division at line %d\n", yylineno);
-        }
-        $$ = generateExprIR($1 && $1->getType()->isIntegerTy(32) ? TYPE_INT : TYPE_FLOAT, "/", $1, $3, "", 0, 0.0, false);
+        $$ = arithmeticExpr("/", "division", $1, $3);
     }
     | expr MOD expr {
         debugPrint("Expanding rule: expr → expr MOD expr (line %d)\n", yylineno);
-        if ($1 && $3 && $1->getType() != $3->getType()) {
-            reportError("Type Error: Mismatched types in modulo at line %d\n", yylineno);
-        }
-        $$ = generateExprIR(TYPE_INT, "%", $1, $3, "", 0, 0.0, false);
+        $$ = arithmeticExpr("%", "modulo", $1, $3);
     }
     | expr AND expr {
         debugPrint("Expanding rule: expr → expr AND expr (line %d)\n", yylineno);
@@ -724,27 +737,27 @@ expr:
     }
     | expr EQ expr {
         debugPrint("Expanding rule: expr → expr EQ expr (line %d)\n", yylineno);
-        $$ = generateRelationalIR("==", $1, $3);
+        $$ = comparisonExpr("==", $1, $3);
     }
     | expr NEQ expr {
         debugPrint("Expanding rule: expr → expr NEQ expr (line %d)\n", yylineno);
-        $$ = generateRelationalIR("!=", $1, $3);
+        $$ = comparisonExpr("!=", $1, $3);
     }
     | expr LT expr {
         debugPrint("Expanding rule: expr → expr LT expr (line %d)\n", yylineno);
-        $$ = generateRelationalIR("<", $1, $3);
+        $$ = comparisonExpr("<", $1, $3);
     }
     | expr GT expr {
         debugPrint("Expanding rule: expr → expr GT expr (line %d)\n", yylineno);
-        $$ = generateRelationalIR(">", $1, $3);
+        $$ = comparisonExpr(">", $1, $3);
     }
     | expr LE expr {
         debugPrint("Expanding rule: expr → expr LE expr (line %d)\n", yylineno);
-        $$ = generateRelationalIR("<=", $1, $3);
+        $$ = comparisonExpr("<=", $1, $3);
     }
     | expr GE expr {
         debugPrint("Expanding rule: expr → expr GE expr (line %d)\n", yylineno);
-        $$ = generateRelationalIR(">=", $1, $3);
+        $$ = comparisonExpr(">=", $1, $3);
     }
     | NUMBER {
         debugPrint("Expanding rule: expr → NUMBER (line %d)\n", yylineno);
@@ -920,6 +933,40 @@ void emitPrintf(const char* quoted, Param* args) {
         free(args);
         args = next;
     }
+}
+
+// Shared by + - * / %. Mixed int/float operands are converted like C
+// (see promoteOperandsIR); anything else is a type error.
+llvm::Value* arithmeticExpr(const char* op, const char* opName, llvm::Value* lhs, llvm::Value* rhs) {
+    if (!lhs || !rhs) {
+        return nullptr; // an operand already had an error
+    }
+    if (!promoteOperandsIR(&lhs, &rhs)) {
+        reportError("Type Error: Mismatched types in %s at line %d\n", opName, yylineno);
+        return nullptr;
+    }
+    bool isFloat = lhs->getType()->isFloatTy();
+    if (!isFloat && !lhs->getType()->isIntegerTy(32)) {
+        reportError("Type Error: Cannot use bool values in %s at line %d\n", opName, yylineno);
+        return nullptr;
+    }
+    if (isFloat && strcmp(op, "%") == 0) {
+        reportError("Type Error: Modulo needs int operands at line %d\n", yylineno);
+        return nullptr;
+    }
+    return generateExprIR(isFloat ? TYPE_FLOAT : TYPE_INT, op, lhs, rhs, "", 0, 0.0, false);
+}
+
+// Shared by == != < > <= >=
+llvm::Value* comparisonExpr(const char* op, llvm::Value* lhs, llvm::Value* rhs) {
+    if (!lhs || !rhs) {
+        return nullptr; // an operand already had an error
+    }
+    llvm::Value* result = generateRelationalIR(op, lhs, rhs);
+    if (!result) {
+        reportError("Type Error: Cannot compare these types with %s at line %d\n", op, yylineno);
+    }
+    return result;
 }
 
 // Semantic checks shared by array reads (a[i]) and writes (a[i] = x):

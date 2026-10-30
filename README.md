@@ -38,7 +38,7 @@ Most compiler tutorials stop at parsing, or they jump straight to a full product
 ## Features
 
 **Language**
-- Types: `int`, `float`, `bool`, `void`
+- Types: `int`, `float`, `bool`, `void`. As in C, an `int` is converted to `float` automatically where a float is needed (`float f = 3;`, `x + 0.5`, `x > 1.5`); other mismatches are type errors
 - Global and local variables, one-dimensional arrays with compile-time bounds checks for constant indices
 - Functions with parameters and return values; prototypes, which may leave out parameter names (`int add(int, int);`)
 - Arithmetic `+ - * / %` and unary minus (`-x`), relational `< <= > >= == !=`, logical `&& || !`, increment and decrement `++ --`
