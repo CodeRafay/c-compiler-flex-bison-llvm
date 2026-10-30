@@ -36,6 +36,7 @@ extern llvm::SwitchInst* currentSwitchInst;
     llvm::BasicBlock* bb;
     void* stmt;
     struct IfBlocks* ifblocks;
+    struct LoopBlocks* loop;
 }
 
 %nonassoc THEN
@@ -374,19 +375,39 @@ stmt:
         }
         $$ = nullptr;
     }
-    |  FOR LPAREN init_expr SEMI expr SEMI update_expr RPAREN compound_stmt {
-    printf("Expanding rule: stmt → FOR (...) (line %d)\n", yylineno);
-    llvm::BasicBlock* prevInsert = builder.GetInsertBlock();
-    // Generate loop structure, get afterBB
-    llvm::BasicBlock* afterLoopBB = generateForLoopIR($3, $5, $7);
-    // Process compound_stmt (loop body) with current insert point (bodyBB)
-    // After compound_stmt, set insert point to afterLoopBB for subsequent statements
-    builder.SetInsertPoint(afterLoopBB);
-    $$ = nullptr;
+    /* Loops: like if, the mid-rule actions { ... } run WHILE the loop is being
+       read, so the blocks exist before the condition and body are generated.
+       In for, the update (i++) is read before the body but must run after it,
+       so it is generated into its own for.step block. */
+    | FOR LPAREN {
+        // Variables declared in the init part (int i = 0) belong to the loop only
+        currentScope++;
+    } init_expr SEMI {
+        $<loop>$ = generateLoopStartIR();
+    } expr SEMI {
+        if (!$7) {
+            reportError("Semantic Error: Invalid condition in for loop (line %d)\n", yylineno);
+        }
+        generateLoopCondIR($<loop>6, generateConditionIR($7), true);
+    } update_expr RPAREN {
+        generateForStepEndIR($<loop>6);
+    } compound_stmt {
+        printf("Expanding rule: stmt → FOR LPAREN init_expr SEMI expr SEMI update_expr RPAREN compound_stmt (line %d)\n", yylineno);
+        generateLoopEndIR($<loop>6);
+        exitScope(currentScope);
+        currentScope--;
+        $$ = nullptr;
     }
-    | WHILE LPAREN expr RPAREN compound_stmt {
+    | WHILE LPAREN {
+        $<loop>$ = generateLoopStartIR();
+    } expr RPAREN {
+        if (!$4) {
+            reportError("Semantic Error: Invalid condition in while loop (line %d)\n", yylineno);
+        }
+        generateLoopCondIR($<loop>3, generateConditionIR($4), false);
+    } compound_stmt {
         printf("Expanding rule: stmt → WHILE LPAREN expr RPAREN compound_stmt (line %d)\n", yylineno);
-        generateWhileLoopIR($3);
+        generateLoopEndIR($<loop>3);
         $$ = nullptr;
     }
     | if_stmt {
@@ -484,6 +505,7 @@ init_expr:
         Symbol* lhs = lookup($1);
         if (!lhs) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);
+            $$ = nullptr;
         } else {
             generateAssignIR($1, $3);
             $$ = $3;
@@ -506,7 +528,7 @@ update_expr:
         }
     }
     | IDENTIFIER DECR {
-        printf("Expanding rule: update_expr → vestitiDECR (line %d)\n", yylineno);
+        printf("Expanding rule: update_expr → IDENTIFIER DECR (line %d)\n", yylineno);
         Symbol* sym = lookup($1);
         if (!sym) {
             reportError("Semantic Error: Variable '%s' not declared (line %d)\n", $1, yylineno);

@@ -174,7 +174,7 @@ This is an active learning project. The front end is complete; code generation i
 | IR: global variables | ✅ Working and verified with `lli` |
 | IR: `printf` (format strings, labels, int/float/bool) | ✅ Working and verified with `lli` |
 | IR: `if` / `else` / `else if` (nested, early `return`) | ✅ Working and verified with `lli` |
-| IR: `while` / `for` | 🔴 Loop condition isn't re-evaluated |
+| IR: `while` / `for` (nested, `for (int i ...)` scoped to the loop) | ✅ Working and verified with `lli` |
 | IR: `switch` | 🔴 Case blocks are missing their final branch, so LLVM rejects the code. Negative labels (`case -1:`) are not parsed since `-` became an operator; both will be fixed in the switch rewrite |
 | Arrays (`int a[10]`, `a[i]`, local and global) | ✅ Working and verified with `lli` |
 
@@ -182,6 +182,7 @@ This is an active learning project. The front end is complete; code generation i
 
 - [ ] Fix control flow code generation (`if`/`else`, `while`, `for`, `switch`)
 - [ ] Accept negative `case` labels (`case -1:`) in the `switch` rewrite
+- [ ] `break`/`continue` inside loops (with the `switch` rewrite, which makes `break` a normal statement)
 - [ ] Automated test suite (`make test`) with expected outputs
 - [ ] Hide debug output behind a `-v` flag
 - [x] Stop writing IR when semantic errors occur

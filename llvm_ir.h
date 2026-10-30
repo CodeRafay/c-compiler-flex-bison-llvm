@@ -14,6 +14,14 @@ struct IfBlocks {
     llvm::BasicBlock* mergeBB;    // where both paths continue afterwards
 };
 
+// The blocks of one while/for loop, carried on Bison's value stack like IfBlocks
+struct LoopBlocks {
+    llvm::BasicBlock* condBB;  // evaluates the condition (jumped back to every iteration)
+    llvm::BasicBlock* bodyBB;  // the loop body
+    llvm::BasicBlock* stepBB;  // for loops: the update (i++); nullptr for while
+    llvm::BasicBlock* afterBB; // code after the loop
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -43,8 +51,10 @@ void generateReturnIR(llvm::Value* value);
 llvm::Value* generateFunctionCallIR(const std::string& name, Param* args);
 void generatePrintfIR(const std::string& format, const std::vector<llvm::Value*>& args);
 void generateScanfIR(const std::string& ident, SymbolType type);
-llvm::BasicBlock* generateForLoopIR(llvm::Value* init, llvm::Value* cond, llvm::Value* update);
-void generateWhileLoopIR(llvm::Value* cond);
+LoopBlocks* generateLoopStartIR();
+void generateLoopCondIR(LoopBlocks* loop, llvm::Value* cond, bool hasStep);
+void generateForStepEndIR(LoopBlocks* loop);
+void generateLoopEndIR(LoopBlocks* loop);
 llvm::Value* generateConditionIR(llvm::Value* value);
 IfBlocks* generateIfStartIR(llvm::Value* cond);
 void generateIfElseIR(IfBlocks* blocks);

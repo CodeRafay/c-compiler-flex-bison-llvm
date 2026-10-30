@@ -162,6 +162,18 @@ llvm::Function* generateFunctionIR(const std::string& name, SymbolType returnTyp
     return function;
 }
 
+// A local variable's stack memory (alloca) is always created at the start of
+// the function's entry block, not where the declaration appears. An alloca
+// inside a loop body would grab NEW stack memory on every iteration, and a
+// long loop would run out of stack. The value is still stored where the
+// declaration appears, so the variable behaves exactly the same.
+static llvm::AllocaInst* createEntryBlockAlloca(llvm::Type* type, const std::string& name) {
+    llvm::Function* func = builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock& entry = func->getEntryBlock();
+    llvm::IRBuilder<> entryBuilder(&entry, entry.begin());
+    return entryBuilder.CreateAlloca(type, nullptr, name);
+}
+
 llvm::Value* generateVariableDeclIR(const std::string& name, SymbolType type, int scope) {
     std::cout << "DEBUG: Generating variable decl for " << name << ", scope=" << scope << std::endl;
     llvm::Type* llvmType = getLLVMType(type);
@@ -176,7 +188,7 @@ llvm::Value* generateVariableDeclIR(const std::string& name, SymbolType type, in
                                         llvm::GlobalValue::InternalLinkage,
                                         llvm::Constant::getNullValue(llvmType), name);
     }
-    return builder.CreateAlloca(llvmType, nullptr, name);
+    return createEntryBlockAlloca(llvmType, name);
 }
 
 // Globals are initialized before the program runs, so their initial value
@@ -215,7 +227,7 @@ llvm::Value* generateArrayDeclIR(const std::string& name, SymbolType type, int s
                                         llvm::GlobalValue::InternalLinkage,
                                         llvm::Constant::getNullValue(arrayType), name);
     }
-    return builder.CreateAlloca(arrayType, nullptr, name);
+    return createEntryBlockAlloca(arrayType, name);
 }
 
 // Address of arr[index]. The array's element type and size come from the
@@ -421,61 +433,6 @@ void generateScanfIR(const std::string& ident, SymbolType type) {
     builder.CreateCall(scanfFunc, {formatStr, sym->value});
 }
 
-llvm::BasicBlock* generateForLoopIR(llvm::Value* init, llvm::Value* cond, llvm::Value* update) {
-    std::cout << "DEBUG: Generating for loop\n";
-    llvm::Function* func = builder.GetInsertBlock()->getParent();
-    llvm::BasicBlock* loopBB = llvm::BasicBlock::Create(context, "loop", func);
-    llvm::BasicBlock* bodyBB = llvm::BasicBlock::Create(context, "body", func);
-    llvm::BasicBlock* updateBB = llvm::BasicBlock::Create(context, "update", func);
-    llvm::BasicBlock* afterBB = llvm::BasicBlock::Create(context, "afterloop", func);
-
-    // Branch to loop condition
-    builder.CreateBr(loopBB);
-    builder.SetInsertPoint(loopBB);
-    llvm::Value* condVal = cond ? cond : llvm::ConstantInt::get(context, llvm::APInt(1, 1));
-    builder.CreateCondBr(condVal, bodyBB, afterBB);
-
-    // Set insert point to bodyBB for the parser to fill
-    builder.SetInsertPoint(bodyBB); // Corrected from bodyBBQuite
-    // Body will be filled by compound_stmt in parser
-
-    // After body, branch to update if no terminator
-    if (!bodyBB->getTerminator()) {
-        builder.CreateBr(updateBB);
-    }
-
-    // Update block
-    builder.SetInsertPoint(updateBB);
-    if (update) {
-        // Ensure update is used (e.g., i++ has already been generated in update_expr)
-    }
-    builder.CreateBr(loopBB); // Back to condition
-
-    // Return afterBB for parser to set insert point later
-    return afterBB;
-}
-
-void generateWhileLoopIR(llvm::Value* cond) {
-    std::cout << "DEBUG: Generating while loop\n";
-    llvm::Function* func = builder.GetInsertBlock()->getParent();
-    llvm::BasicBlock* loopBB = llvm::BasicBlock::Create(context, "loop", func);
-    llvm::BasicBlock* bodyBB = llvm::BasicBlock::Create(context, "body", func);
-    llvm::BasicBlock* afterBB = llvm::BasicBlock::Create(context, "afterloop", func);
-
-    builder.CreateBr(loopBB);
-    builder.SetInsertPoint(loopBB);
-    llvm::Value* condVal = cond ? cond : llvm::ConstantInt::get(context, llvm::APInt(1, 1));
-    builder.CreateCondBr(condVal, bodyBB, afterBB);
-
-    builder.SetInsertPoint(bodyBB);
-    // Body will be filled by compound_stmt
-    if (!builder.GetInsertBlock()->getTerminator()) {
-        builder.CreateBr(loopBB);
-    }
-
-    builder.SetInsertPoint(afterBB);
-}
-
 // Branch instructions need an i1 (true/false). C lets you write if (x) for
 // any number, meaning "x is not zero", so convert ints and floats here.
 llvm::Value* generateConditionIR(llvm::Value* value) {
@@ -552,6 +509,71 @@ void generateIfEndIR(IfBlocks* blocks) {
     func->getBasicBlockList().push_back(blocks->mergeBB);
     builder.SetInsertPoint(blocks->mergeBB);
     delete blocks;
+}
+
+// Loops use the same idea as if: the parser calls these functions at the
+// right moments WHILE it reads the loop, so each piece of code lands in
+// the right block. The finished loop looks like:
+//
+//   loop.cond:  evaluate the condition, br cond ? loop.body : loop.after
+//   loop.body:  the body, then br for.step (for) or br loop.cond (while)
+//   for.step:   the update (i++), then br loop.cond          (for only)
+//   loop.after: code after the loop
+
+// Called before the condition is parsed. The condition gets its own block,
+// so jumping back to it re-evaluates the condition on every iteration.
+LoopBlocks* generateLoopStartIR() {
+    std::cout << "DEBUG: Generating loop start\n";
+    llvm::Function* func = builder.GetInsertBlock()->getParent();
+    LoopBlocks* loop = new LoopBlocks;
+    loop->condBB = llvm::BasicBlock::Create(context, "loop.cond", func);
+    loop->bodyBB = nullptr;
+    loop->stepBB = nullptr;
+    loop->afterBB = nullptr;
+    builder.CreateBr(loop->condBB);
+    builder.SetInsertPoint(loop->condBB);
+    return loop;
+}
+
+// Called after the condition is parsed: branch into the body or out of the loop.
+// For a for loop, the update (i++) is parsed next, BEFORE the body, even
+// though it must run AFTER the body. So we send it to its own for.step block.
+void generateLoopCondIR(LoopBlocks* loop, llvm::Value* cond, bool hasStep) {
+    std::cout << "DEBUG: Generating loop condition\n";
+    llvm::Function* func = builder.GetInsertBlock()->getParent();
+    loop->bodyBB = llvm::BasicBlock::Create(context, "loop.body", func);
+    if (hasStep) {
+        loop->stepBB = llvm::BasicBlock::Create(context, "for.step", func);
+    }
+    // after is added to the function at the end, so blocks appear in source order
+    loop->afterBB = llvm::BasicBlock::Create(context, "loop.after");
+
+    if (!cond) {
+        // The condition had an error (already reported); keep the IR well-formed
+        cond = llvm::ConstantInt::get(context, llvm::APInt(1, 0));
+    }
+    builder.CreateCondBr(cond, loop->bodyBB, loop->afterBB);
+    builder.SetInsertPoint(hasStep ? loop->stepBB : loop->bodyBB);
+}
+
+// for loops only: the update has been generated in for.step. Jump back to
+// the condition from there, then move on to the body.
+void generateForStepEndIR(LoopBlocks* loop) {
+    std::cout << "DEBUG: Generating for step end\n";
+    builder.CreateBr(loop->condBB);
+    builder.SetInsertPoint(loop->bodyBB);
+}
+
+// Called after the body: go round again (through the step for a for loop),
+// then continue with the code after the loop.
+void generateLoopEndIR(LoopBlocks* loop) {
+    std::cout << "DEBUG: Generating loop end\n";
+    branchIfOpen(loop->stepBB ? loop->stepBB : loop->condBB);
+
+    llvm::Function* func = builder.GetInsertBlock()->getParent();
+    func->getBasicBlockList().push_back(loop->afterBB);
+    builder.SetInsertPoint(loop->afterBB);
+    delete loop;
 }
 
 void generateSwitchIR(llvm::Value* expr) {
