@@ -180,7 +180,7 @@ flowchart LR
 
 ## Project status
 
-This is an active learning project. The front end is complete; code generation is partly done.
+Every feature listed under [Features](#features) generates working LLVM IR, and each one is covered by the automated tests (`make test`). The language is still a teaching-sized subset of C; see [Limitations](#limitations) for what is not supported yet.
 
 | Area | Status |
 |---|---|
