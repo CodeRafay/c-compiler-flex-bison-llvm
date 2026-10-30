@@ -7,9 +7,6 @@
 llvm::LLVMContext context;
 llvm::Module* module = nullptr;
 llvm::IRBuilder<> builder(context);
-llvm::BasicBlock* thenBB = nullptr;
-llvm::BasicBlock* elseBB = nullptr;
-llvm::BasicBlock* mergeBB = nullptr;
 llvm::BasicBlock* afterSwitchBB = nullptr;
 llvm::SwitchInst* currentSwitchInst = nullptr;
 
@@ -319,6 +316,9 @@ llvm::Value* generateNegateIR(llvm::Value* value) {
 
 llvm::Value* generateLogicalIR(const std::string& op, llvm::Value* lhs, llvm::Value* rhs) {
     std::cout << "DEBUG: Generating logical op " << op << std::endl;
+    if (!lhs || (op != "!" && !rhs)) {
+        return nullptr; // an operand already had an error (e.g. undeclared variable)
+    }
     if (op == "&&") {
         return builder.CreateAnd(lhs, rhs, "andtmp");
     } else if (op == "||") {
@@ -332,6 +332,9 @@ llvm::Value* generateLogicalIR(const std::string& op, llvm::Value* lhs, llvm::Va
 
 llvm::Value* generateRelationalIR(const std::string& op, llvm::Value* lhs, llvm::Value* rhs) {
     std::cout << "DEBUG: Generating relational op " << op << std::endl;
+    if (!lhs || !rhs) {
+        return nullptr; // an operand already had an error (e.g. undeclared variable)
+    }
     if (lhs->getType()->isIntegerTy(32)) {
         if (op == "==") return builder.CreateICmpEQ(lhs, rhs, "eqtmp");
         if (op == "!=") return builder.CreateICmpNE(lhs, rhs, "neqtmp");
@@ -488,32 +491,82 @@ void generateWhileLoopIR(llvm::Value* cond) {
     builder.SetInsertPoint(afterBB);
 }
 
-void generateIfStmtIR(llvm::Value* cond, void* elseStmt) {
-    std::cout << "DEBUG: Generating if stmt, hasElse=" << (elseStmt ? "true" : "false") << std::endl;
-    llvm::Function* func = builder.GetInsertBlock()->getParent();
-    thenBB = llvm::BasicBlock::Create(context, "then", func);
-    if (elseStmt) {
-        elseBB = llvm::BasicBlock::Create(context, "else", func);
+// Branch instructions need an i1 (true/false). C lets you write if (x) for
+// any number, meaning "x is not zero", so convert ints and floats here.
+llvm::Value* generateConditionIR(llvm::Value* value) {
+    if (!value) {
+        return nullptr;
     }
-    mergeBB = llvm::BasicBlock::Create(context, "merge", func);
-
-    builder.CreateCondBr(cond, thenBB, elseStmt ? elseBB : mergeBB);
-    builder.SetInsertPoint(thenBB);
+    llvm::Type* type = value->getType();
+    if (type->isIntegerTy(1)) {
+        return value;
+    }
+    if (type->isFloatTy()) {
+        return builder.CreateFCmpONE(value, llvm::ConstantFP::get(type, 0.0), "tobool");
+    }
+    return builder.CreateICmpNE(value, llvm::ConstantInt::get(type, 0), "tobool");
 }
 
-void finalizeIfStmtIR(void* elseStmt) {
-    // Called after then and else blocks are populated
-    if (thenBB && !thenBB->getTerminator()) {
-        builder.SetInsertPoint(thenBB);
-        builder.CreateBr(mergeBB);
+// If the current block doesn't already end in a return/branch, jump to dest.
+// (A branch body that ends with "return" must not get a second terminator.)
+static void branchIfOpen(llvm::BasicBlock* dest) {
+    if (!builder.GetInsertBlock()->getTerminator()) {
+        builder.CreateBr(dest);
     }
-    if (elseStmt && elseBB && !elseBB->getTerminator()) {
-        builder.SetInsertPoint(elseBB);
-        builder.CreateBr(mergeBB);
+}
+
+// Called right after "if (cond)" is parsed, BEFORE the body. Because Bison
+// runs actions bottom-up, this is our only chance to set up the blocks so
+// that the body's code is generated inside the "then" block.
+//
+// At this point we don't know yet whether an "else" will follow, so the
+// false edge of the branch goes to "merge" for now. If an else shows up,
+// generateIfElseIR patches it (this is called backpatching).
+IfBlocks* generateIfStartIR(llvm::Value* cond) {
+    std::cout << "DEBUG: Generating if start\n";
+    if (!cond) {
+        return nullptr;
     }
-    if (mergeBB) {
-        builder.SetInsertPoint(mergeBB);
+    llvm::Function* func = builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock* thenBB = llvm::BasicBlock::Create(context, "then", func);
+    // merge is added to the function later, so blocks appear in source order in output.ll
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(context, "merge");
+
+    IfBlocks* blocks = new IfBlocks;
+    blocks->condBranch = builder.CreateCondBr(cond, thenBB, mergeBB);
+    blocks->mergeBB = mergeBB;
+    builder.SetInsertPoint(thenBB);
+    return blocks;
+}
+
+// Called when "else" is seen: finish the then-body and start the else-body.
+void generateIfElseIR(IfBlocks* blocks) {
+    std::cout << "DEBUG: Generating else\n";
+    if (!blocks) {
+        return;
     }
+    // The current block is the end of the then-body. It may not be "then"
+    // itself if the body contained a nested if.
+    branchIfOpen(blocks->mergeBB);
+
+    llvm::Function* func = builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock* elseBB = llvm::BasicBlock::Create(context, "else", func);
+    blocks->condBranch->setSuccessor(1, elseBB); // backpatch: false edge → else
+    builder.SetInsertPoint(elseBB);
+}
+
+// Called at the very end of the if statement: both paths meet in "merge".
+void generateIfEndIR(IfBlocks* blocks) {
+    std::cout << "DEBUG: Generating if end\n";
+    if (!blocks) {
+        return;
+    }
+    branchIfOpen(blocks->mergeBB);
+
+    llvm::Function* func = builder.GetInsertBlock()->getParent();
+    func->getBasicBlockList().push_back(blocks->mergeBB);
+    builder.SetInsertPoint(blocks->mergeBB);
+    delete blocks;
 }
 
 void generateSwitchIR(llvm::Value* expr) {

@@ -35,6 +35,7 @@ extern llvm::SwitchInst* currentSwitchInst;
     llvm::Value* llvm_val;
     llvm::BasicBlock* bb;
     void* stmt;
+    struct IfBlocks* ifblocks;
 }
 
 %nonassoc THEN
@@ -64,6 +65,7 @@ extern llvm::SwitchInst* currentSwitchInst;
 %type <param> arg_list_opt
 %type <bb> switch_start
 %type <typeval> type_specifier
+%type <ifblocks> if_head
 
 %token INT FLOAT BOOL VOID RETURN MAIN PRINTF SCANF FOR IF ELSE WHILE SWITCH CASE TRUE FALSE BREAK DEFAULT
 %token LE LT GT GE EQ NEQ AND OR NOT INCR DECR COMMA ASSIGN
@@ -387,42 +389,9 @@ stmt:
         generateWhileLoopIR($3);
         $$ = nullptr;
     }
-    | IF LPAREN expr RPAREN compound_stmt %prec THEN {
-        printf("Expanding rule: stmt → IF LPAREN expr RPAREN compound_stmt (line %d)\n", yylineno);
-        if (!$3) {
-            reportError("Semantic Error: Invalid condition in if statement (line %d)\n", yylineno);
-            YYERROR;
-        }
-        llvm::BasicBlock* prevInsert = builder.GetInsertBlock();
-        generateIfStmtIR($3, nullptr);
-        builder.SetInsertPoint(thenBB);
-        $<stmt>5 = nullptr; // Force re-evaluation of then compound_stmt
-        finalizeIfStmtIR(nullptr); // Finalize then block
-        builder.SetInsertPoint(mergeBB);
-        thenBB = nullptr;
-        mergeBB = nullptr;
+    | if_stmt {
+        printf("Expanding rule: stmt → if_stmt (line %d)\n", yylineno);
         $$ = nullptr;
-        builder.SetInsertPoint(prevInsert);
-    }
-    | IF LPAREN expr RPAREN compound_stmt ELSE compound_stmt {
-        printf("Expanding rule: stmt → IF LPAREN expr RPAREN compound_stmt ELSE compound_stmt (line %d)\n", yylineno);
-        if (!$3) {
-            reportError("Semantic Error: Invalid condition in if statement (line %d)\n", yylineno);
-            YYERROR;
-        }
-        llvm::BasicBlock* prevInsert = builder.GetInsertBlock();
-        generateIfStmtIR($3, (void*)1);
-        builder.SetInsertPoint(thenBB);
-        $<stmt>5 = nullptr; // Force re-evaluation of then compound_stmt
-        builder.SetInsertPoint(elseBB);
-        $<stmt>7 = nullptr; // Force re-evaluation of else compound_stmt
-        finalizeIfStmtIR((void*)1); // Finalize then and else blocks
-        builder.SetInsertPoint(mergeBB);
-        thenBB = nullptr;
-        elseBB = nullptr;
-        mergeBB = nullptr;
-        $$ = nullptr;
-        builder.SetInsertPoint(prevInsert);
     }
     | RETURN expr SEMI {
         printf("Expanding rule: stmt → RETURN expr SEMI (line %d)\n", yylineno);
@@ -447,6 +416,43 @@ stmt:
         $$ = nullptr;
     }
     | declaration SEMI { printf("Expanding rule: stmt → declaration SEMI (line %d)\n", yylineno); $$ = nullptr; }
+    ;
+
+/* if / else
+   Bison runs an action only after its whole rule has been matched. If the
+   blocks for an if were created in the action of "IF ( expr ) body", the
+   body's code would already have been generated, in the wrong place.
+   So if_head reduces as soon as "if (cond)" is read, BEFORE the body,
+   and sets up the blocks; the body is then generated inside "then". */
+if_head:
+    IF LPAREN expr RPAREN {
+        printf("Expanding rule: if_head → IF LPAREN expr RPAREN (line %d)\n", yylineno);
+        if (!$3) {
+            reportError("Semantic Error: Invalid condition in if statement (line %d)\n", yylineno);
+            $$ = nullptr;
+        } else {
+            $$ = generateIfStartIR(generateConditionIR($3));
+        }
+    }
+    ;
+
+if_stmt:
+    if_head compound_stmt %prec THEN {
+        printf("Expanding rule: if_stmt → if_head compound_stmt (line %d)\n", yylineno);
+        generateIfEndIR($1);
+    }
+    | if_head compound_stmt ELSE {
+        // Mid-rule action: runs as soon as "else" is read, before the else-body
+        generateIfElseIR($1);
+    } else_body {
+        printf("Expanding rule: if_stmt → if_head compound_stmt ELSE else_body (line %d)\n", yylineno);
+        generateIfEndIR($1);
+    }
+    ;
+
+else_body:
+    compound_stmt { printf("Expanding rule: else_body → compound_stmt (line %d)\n", yylineno); }
+    | if_stmt { printf("Expanding rule: else_body → if_stmt (line %d)\n", yylineno); } /* else if */
     ;
 
 switch_start:

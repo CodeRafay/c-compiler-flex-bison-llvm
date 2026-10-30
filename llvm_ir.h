@@ -7,6 +7,13 @@
 #include <string>
 #include "symbol_table.h"
 
+// The blocks of one if statement, carried on Bison's value stack from
+// "if (cond)" to the end of the statement (so nested ifs don't clash).
+struct IfBlocks {
+    llvm::BranchInst* condBranch; // the conditional branch, patched if an else appears
+    llvm::BasicBlock* mergeBB;    // where both paths continue afterwards
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,9 +21,6 @@ extern "C" {
 extern llvm::LLVMContext context;
 extern llvm::Module* module;
 extern llvm::IRBuilder<> builder;
-extern llvm::BasicBlock* thenBB;
-extern llvm::BasicBlock* elseBB;
-extern llvm::BasicBlock* mergeBB;
 extern llvm::BasicBlock* afterSwitchBB;
 extern llvm::SwitchInst* currentSwitchInst;
 
@@ -43,8 +47,10 @@ void generatePrintfIR(const std::string& format, const std::vector<llvm::Value*>
 void generateScanfIR(const std::string& ident, SymbolType type);
 llvm::BasicBlock* generateForLoopIR(llvm::Value* init, llvm::Value* cond, llvm::Value* update);
 void generateWhileLoopIR(llvm::Value* cond);
-void generateIfStmtIR(llvm::Value* cond, void* elseStmt);
-void finalizeIfStmtIR(void* elseStmt);
+llvm::Value* generateConditionIR(llvm::Value* value);
+IfBlocks* generateIfStartIR(llvm::Value* cond);
+void generateIfElseIR(IfBlocks* blocks);
+void generateIfEndIR(IfBlocks* blocks);
 void generateSwitchIR(llvm::Value* expr);
 void generateCaseIR(int value);
 void generateDefaultCaseIR();
