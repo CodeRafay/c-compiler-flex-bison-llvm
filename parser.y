@@ -872,6 +872,7 @@ static std::string unescapeString(const char* quoted) {
 //   2. Label style, for strings without '%' (and for no string at all):
 //        printf("Sum: ", sum);  → prints "Sum: 15" and a newline
 //        printf(a, b);          → prints "1 2" and a newline
+//        printf("Done\n");      → prints "Done" and one newline (not two)
 //      Here we build the format ourselves from each argument's type.
 void emitPrintf(const char* quoted, Param* args) {
     std::string text = quoted ? unescapeString(quoted) : "";
@@ -890,7 +891,10 @@ void emitPrintf(const char* quoted, Param* args) {
             if (i > 0) format += " ";
             format += values[i]->getType()->isFloatTy() ? "%f" : "%d";
         }
-        format += "\n";
+        // Add the newline only if the text doesn't already end with one
+        if (format.empty() || format[format.size() - 1] != '\n') {
+            format += "\n";
+        }
     }
     generatePrintfIR(format, values);
 
