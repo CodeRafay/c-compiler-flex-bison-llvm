@@ -72,7 +72,7 @@ sudo apt install flex bison g++ llvm-14 llvm-14-dev
 ### Build and run
 
 ```sh
-git clone https://github.com/<coderafay>/c-compiler-flex-bison-llvm.git
+git clone https://github.com/CodeRafay/c-compiler-flex-bison-llvm.git
 cd c-compiler-flex-bison-llvm
 make                                   # builds ./compiler
 ./compiler testCaseExamples/test.c     # writes output.ll
