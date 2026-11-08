@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install flex, bison and LLVM 14
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flex bison g++ llvm-14 llvm-14-dev
+          echo /usr/lib/llvm-14/bin >> "$GITHUB_PATH"
+
+      - name: Check the grammar has no conflicts
+        run: |
+          bison -d -v -o "$RUNNER_TEMP/parser.tab.c" parser.y 2> bison.log || { cat bison.log; exit 1; }
+          if grep -qi conflict bison.log; then cat bison.log; exit 1; fi
+
+      - name: Build
+        run: make
+
+      - name: Run the tests
+        run: make test

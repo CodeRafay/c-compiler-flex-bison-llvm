@@ -2,6 +2,7 @@
 
 **An educational C compiler built from scratch with Flex (lexer), Bison (parser), and the LLVM C++ API (code generation).** It compiles a teaching-sized subset of C to LLVM IR that runs directly with `lli`. Lexical analysis, parsing, semantic analysis with a scoped symbol table and type checking, and IR generation are all in a small codebase you can read in one sitting, which makes it a good companion for a compiler construction course.
 
+[![CI](https://github.com/CodeRafay/c-compiler-flex-bison-llvm/actions/workflows/ci.yml/badge.svg)](https://github.com/CodeRafay/c-compiler-flex-bison-llvm/actions/workflows/ci.yml)
 ![C++](https://img.shields.io/badge/C%2B%2B-14-blue?logo=cplusplus)
 ![LLVM](https://img.shields.io/badge/LLVM-14-262D3A?logo=llvm)
 ![Flex](https://img.shields.io/badge/lexer-Flex-orange)
@@ -285,6 +286,7 @@ These are valid C but not supported yet. Unless noted, the compiler reports a sy
 - [x] Accept negative `case` labels (`case -1:`) in the `switch` rewrite
 - [x] `break`/`continue` inside loops (with the `switch` rewrite, which makes `break` a normal statement)
 - [x] Automated test suite (`make test`) with expected outputs
+- [x] GitHub Actions CI: builds and runs `make test` on every push and pull request
 - [x] Hide debug output behind a `-v` flag
 - [x] Stop writing IR when semantic errors occur
 - [ ] Optimization passes (mem2reg, constant folding)
