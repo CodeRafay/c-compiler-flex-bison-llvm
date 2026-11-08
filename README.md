@@ -8,7 +8,7 @@
 ![Flex](https://img.shields.io/badge/lexer-Flex-orange)
 ![Bison](https://img.shields.io/badge/parser-Bison-yellow)
 ![Release](https://img.shields.io/badge/release-v1.0.0-blue)
-![Tests](https://img.shields.io/badge/tests-162%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-166%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
@@ -99,9 +99,9 @@ make test        # builds the compiler, then runs every test
 ./tests/run_tests.sh -v   # same, but also lists the passing tests
 ```
 
-The tests live in [`tests/`](tests/). There are 162 of them, and all pass:
+The tests live in [`tests/`](tests/). There are 166 of them, and all pass:
 
-- `tests/cases/*.txt` (121 tests): small programs, one per line, grouped by feature (arithmetic, arrays, functions, globals, if/else, loops, printf, switch). Each is compiled, run with `lli`, and checked against its expected exit code and output.
+- `tests/cases/*.txt` (125 tests): small programs, one per line, grouped by feature (arithmetic, arrays, functions, globals, if/else, loops, printf, switch). Each is compiled, run with `lli`, and checked against its expected exit code and output.
 - `tests/errors.txt` (35 tests): incorrect programs. The compiler must report the expected error, exit with 1, and write no `output.ll`.
 - `tests/examples.txt` (6 tests): the sample programs in `testCaseExamples/`.
 

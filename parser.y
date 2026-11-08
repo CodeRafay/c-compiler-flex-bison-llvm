@@ -43,8 +43,11 @@ int currentScope = 0;
 %nonassoc THEN
 %nonassoc ELSE
 
-%left OR AND
-%left EQ NEQ GT GE LE LT
+/* Lowest precedence first, as in C: || < && < == != < relational */
+%left OR
+%left AND
+%left EQ NEQ
+%left GT GE LE LT
 %left PLUS MINUS
 %left MULT DIV MOD
 %right NOT

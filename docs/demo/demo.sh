@@ -5,7 +5,7 @@
 # To regenerate docs/demo.gif (asciinema 3 and agg, both single binaries from
 # github.com/asciinema/asciinema and github.com/asciinema/agg releases):
 #   asciinema rec --overwrite --headless --window-size 100x32 -c docs/demo/demo.sh docs/demo/demo.cast
-#   agg --font-size 16 --theme monokai --idle-time-limit 2 docs/demo/demo.cast docs/demo.gif
+#   agg --font-size 16 --theme monokai --idle-time-limit 2 --fps-cap 12 --speed 1.2 docs/demo/demo.cast docs/demo.gif
 
 cd "$(dirname "$0")/../.." || exit 1
 
