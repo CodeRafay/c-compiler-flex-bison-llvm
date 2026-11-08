@@ -14,3 +14,4 @@
 9|-|int sq(int); int main() { return sq(3); } int sq(int n) { return n * n; }
 1|-|float half() { return 1; } int main() { float h = half(); if (h > 0.5) { return 1; } return 0; }
 4|-|int g; void set(int v) { if (v < 0) { return; } g = v; } int main() { set(-1); set(4); set(-2); return g; }
+42|-|int square(int x) { return x * x; } int main() { int a = 6; return square(a) + 6; }
