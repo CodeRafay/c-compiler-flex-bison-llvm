@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Educational C Compiler with Flex, Bison and LLVM</title>
+<meta name="description" content="An open-source educational C compiler built from scratch with Flex, Bison and the LLVM C++ API. Lexical analysis, LALR(1) parsing, semantic analysis with a scoped symbol table, and LLVM IR generation in a small, readable codebase.">
+<link rel="canonical" href="https://coderafay.github.io/c-compiler-flex-bison-llvm/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Educational C Compiler with Flex, Bison and LLVM">
+<meta property="og:description" content="A small C compiler you can read in one sitting: Flex lexer, Bison parser, scoped symbol table, type checking, and LLVM IR generation.">
+<meta property="og:url" content="https://coderafay.github.io/c-compiler-flex-bison-llvm/">
+<meta property="og:image" content="https://coderafay.github.io/c-compiler-flex-bison-llvm/demo.gif">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="style.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "c-compiler-flex-bison-llvm",
+  "description": "An educational C compiler built from scratch with Flex, Bison and the LLVM C++ API. It compiles a subset of C to LLVM IR.",
+  "codeRepository": "https://github.com/CodeRafay/c-compiler-flex-bison-llvm",
+  "url": "https://coderafay.github.io/c-compiler-flex-bison-llvm/",
+  "programmingLanguage": ["C++", "Lex", "Yacc"],
+  "runtimePlatform": "LLVM 14",
+  "license": "https://opensource.org/licenses/MIT",
+  "version": "1.0.0",
+  "keywords": "compiler, compiler construction, compiler design, Flex, Bison, LLVM, LLVM IR, lexical analysis, parsing, semantic analysis, symbol table, education",
+  "author": {"@type": "Person", "name": "CodeRafay", "url": "https://github.com/CodeRafay"}
+}
+</script>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Flex · Bison · LLVM 14 · MIT</p>
+    <h1>An educational C compiler, built from scratch</h1>
+    <p class="lede">A compiler for a teaching-sized subset of C. A <strong>Flex</strong> lexer and a <strong>Bison</strong> LALR(1) parser feed a scoped symbol table and type checker, and the <strong>LLVM C++ API</strong> generates IR that runs with <code>lli</code>. The whole thing is about 2,300 lines you can read in one sitting.</p>
+    <p class="actions">
+      <a class="button primary" href="https://github.com/CodeRafay/c-compiler-flex-bison-llvm">View on GitHub</a>
+      <a class="button" href="#quick-start">Quick start</a>
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+  <figure class="demo">
+    <img src="demo.gif" width="983" height="739" alt="Terminal demo: compiling a small C program, showing each token and grammar rule, the generated LLVM IR, running it with lli (exit code 42), and the test suite passing">
+    <figcaption>One run, start to finish: source, tokens and grammar rules (<code>-v</code>), LLVM IR, <code>lli</code>, and the test suite.</figcaption>
+  </figure>
+
+  <section id="pipeline">
+    <h2>How it works</h2>
+    <svg class="diagram" viewBox="0 0 760 170" role="img" aria-labelledby="dtitle">
+      <title id="dtitle">Pipeline: source code goes to the Flex lexer, tokens go to the Bison parser, which uses the symbol table and calls the LLVM IR generator, which writes output.ll for lli</title>
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <g class="box"><rect x="4" y="40" width="110" height="56" rx="8"/><text x="59" y="73">Source .c</text></g>
+      <g class="box accent"><rect x="150" y="40" width="120" height="56" rx="8"/><text x="210" y="64">Lexer</text><text class="sub" x="210" y="83">lexical.l · Flex</text></g>
+      <g class="box accent"><rect x="310" y="40" width="130" height="56" rx="8"/><text x="375" y="64">Parser</text><text class="sub" x="375" y="83">parser.y · Bison</text></g>
+      <g class="box"><rect x="310" y="122" width="130" height="44" rx="8"/><text x="375" y="149">Symbol table</text></g>
+      <g class="box accent"><rect x="480" y="40" width="140" height="56" rx="8"/><text x="550" y="64">IR generator</text><text class="sub" x="550" y="83">llvm_ir.c · IRBuilder</text></g>
+      <g class="box"><rect x="656" y="40" width="100" height="56" rx="8"/><text x="706" y="64">output.ll</text><text class="sub" x="706" y="83">run with lli</text></g>
+      <g class="edge">
+        <line x1="114" y1="68" x2="148" y2="68" marker-end="url(#arrow)"/>
+        <line x1="270" y1="68" x2="308" y2="68" marker-end="url(#arrow)"/>
+        <line x1="375" y1="96" x2="375" y2="120" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+        <line x1="440" y1="68" x2="478" y2="68" marker-end="url(#arrow)"/>
+        <line x1="620" y1="68" x2="654" y2="68" marker-end="url(#arrow)"/>
+      </g>
+      <text class="label" x="289" y="32">tokens</text>
+      <text class="label" x="459" y="32">actions</text>
+    </svg>
+    <ol class="steps">
+      <li><strong>Lexical analysis.</strong> <code>lexical.l</code> defines token patterns; Flex generates <code>yylex()</code>, which turns characters into tokens such as <code>INT</code>, <code>IDENTIFIER</code> and <code>NUMBER</code>.</li>
+      <li><strong>Syntax analysis.</strong> <code>parser.y</code> is an LALR(1) grammar. Precedence declarations resolve operator ambiguity and the dangling <code>else</code>.</li>
+      <li><strong>Semantic analysis.</strong> As each rule is reduced, its action looks identifiers up in a scoped symbol table, checks types, and validates function calls. Errors are reported with line numbers, and no IR is written.</li>
+      <li><strong>Code generation.</strong> The same actions call <code>llvm_ir.c</code>, which emits IR with LLVM's <code>IRBuilder</code>: an <code>alloca</code> per local, <code>load</code>/<code>store</code> for access. The module is verified and written to <code>output.ll</code>.</li>
+    </ol>
+    <p>There is no separate syntax tree. The compiler does <strong>single-pass syntax-directed translation</strong>: IR is emitted the moment Bison reduces each rule. Bison reduces bottom-up, so a loop's condition is parsed before the loop rule itself runs. Control flow handles this with mid-rule actions and a stack of basic blocks.</p>
+  </section>
+
+  <section id="walkthrough">
+    <h2>One statement, step by step</h2>
+    <p>For <code>return a * 7;</code>, here is what <code>./compiler -v</code> prints, and the IR each reduction produces:</p>
+    <div class="cols">
+<pre><code>Processing token at line 3: RETURN, Lexeme: return
+Processing token at line 3: IDENTIFIER, Lexeme: a
+Processing token at line 3: MULT, Lexeme: *
+Expanding rule: expr → IDENTIFIER (line 3)
+Processing token at line 3: NUMBER, Lexeme: 7
+Expanding rule: expr → NUMBER (line 3)
+Expanding rule: expr → expr MULT expr (line 3)
+Processing token at line 3: SEMI, Lexeme: ;
+Expanding rule: stmt → RETURN expr SEMI (line 3)</code></pre>
+<pre><code>; expr → IDENTIFIER
+%a1 = load i32, i32* %a, align 4
+; expr → NUMBER gives the constant 7
+; expr → expr MULT expr
+%multmp = mul i32 %a1, 7
+; stmt → RETURN expr SEMI
+ret i32 %multmp</code></pre>
+    </div>
+  </section>
+
+  <section id="quick-start">
+    <h2>Quick start</h2>
+    <p>Ubuntu, Debian or WSL:</p>
+<pre><code>sudo apt install flex bison g++ llvm-14 llvm-14-dev
+export PATH=/usr/lib/llvm-14/bin:$PATH
+
+git clone https://github.com/CodeRafay/c-compiler-flex-bison-llvm.git
+cd c-compiler-flex-bison-llvm
+make                                  # builds ./compiler
+./compiler testCaseExamples/test.c    # writes output.ll
+lli output.ll; echo $?                # runs it, prints main's return value
+make test                             # runs all 162 tests</code></pre>
+  </section>
+
+  <section id="features">
+    <h2>What it supports</h2>
+    <div class="cols">
+      <div>
+        <h3>Language</h3>
+        <ul>
+          <li><code>int</code>, <code>float</code>, <code>bool</code>, <code>void</code>, with C-style int→float conversion</li>
+          <li>Global and local variables; one-dimensional arrays</li>
+          <li>Functions, parameters, return values, prototypes</li>
+          <li><code>if</code>/<code>else if</code>/<code>else</code>, <code>while</code>, <code>for</code>, <code>switch</code> with fallthrough, <code>break</code>, <code>continue</code></li>
+          <li>Arithmetic, relational, logical, <code>++</code>/<code>--</code> operators</li>
+          <li><code>printf</code> with format strings, <code>scanf</code></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Not supported yet</h3>
+        <ul>
+          <li>Pointers, structs, <code>char</code>, strings, <code>double</code></li>
+          <li>Unbraced <code>if</code>/loop bodies, <code>do … while</code>, <code>?:</code></li>
+          <li>Compound assignment (<code>+=</code>) and casts</li>
+          <li>Short-circuit <code>&amp;&amp;</code>/<code>||</code> (both sides are evaluated)</li>
+          <li><code>#define</code> and the rest of the preprocessor</li>
+        </ul>
+        <p class="note">The full list is in the <a href="https://github.com/CodeRafay/c-compiler-flex-bison-llvm#limitations">README</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="who">
+    <h2>Who it's for</h2>
+    <p>Students in a compiler construction or compiler design course, developers learning how Flex and Bison fit together, and anyone who wants a hands-on introduction to generating LLVM IR. Every feature is covered by an automated test that compiles a program, runs it with <code>lli</code>, and checks its exit code and output. If you use it for coursework, follow your institution's academic integrity rules.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a href="https://github.com/CodeRafay/c-compiler-flex-bison-llvm">Source on GitHub</a> ·
+    <a href="https://github.com/CodeRafay/c-compiler-flex-bison-llvm/blob/main/LICENSE">MIT License</a> ·
+    <a href="https://github.com/CodeRafay/c-compiler-flex-bison-llvm/issues">Report an issue</a>
+  </div>
+</footer>
+</body>
+</html>

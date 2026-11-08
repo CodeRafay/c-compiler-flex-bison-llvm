@@ -29,6 +29,7 @@
 - [Limitations](#limitations)
 - [Roadmap](#roadmap)
 - [FAQ](#faq)
+- [Learn more](#learn-more)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -322,6 +323,11 @@ Contributions are welcome, especially fixes on the [roadmap](#roadmap).
 3. Open a pull request that describes what you changed and how you tested it.
 
 Bug reports with a minimal input program are very helpful.
+
+## Learn more
+
+- **Project site:** <https://coderafay.github.io/c-compiler-flex-bison-llvm/>, with the pipeline diagram, a statement-by-statement walkthrough and a quick start
+- **Demo script:** [`docs/demo/demo.sh`](docs/demo/demo.sh) replays the session shown in the GIF above
 
 ## License
 
