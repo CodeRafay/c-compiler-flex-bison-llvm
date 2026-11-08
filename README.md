@@ -1,12 +1,14 @@
 # C Compiler with Flex, Bison and LLVM
 
-**An educational compiler for a C-like language, built from scratch with Flex (lexer), Bison (parser), and the LLVM C++ API (code generation).** It turns source code into LLVM IR that runs directly with `lli`, and it shows every core phase of compiler construction in a small codebase you can read in one sitting.
+**An educational C compiler built from scratch with Flex (lexer), Bison (parser), and the LLVM C++ API (code generation).** It compiles a teaching-sized subset of C to LLVM IR that runs directly with `lli`. Lexical analysis, parsing, semantic analysis with a scoped symbol table and type checking, and IR generation are all in a small codebase you can read in one sitting, which makes it a good companion for a compiler construction course.
 
 ![C++](https://img.shields.io/badge/C%2B%2B-14-blue?logo=cplusplus)
 ![LLVM](https://img.shields.io/badge/LLVM-14-262D3A?logo=llvm)
 ![Flex](https://img.shields.io/badge/lexer-Flex-orange)
 ![Bison](https://img.shields.io/badge/parser-Bison-yellow)
-![Status](https://img.shields.io/badge/status-work%20in%20progress-lightgrey)
+![Release](https://img.shields.io/badge/release-v1.0.0-blue)
+![Tests](https://img.shields.io/badge/tests-161%20passing-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-green)
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 ---
@@ -18,6 +20,7 @@
 - [Quick start](#quick-start)
 - [Example](#example)
 - [How it works](#how-it-works)
+- [The pipeline, step by step](#the-pipeline-step-by-step)
 - [Project structure](#project-structure)
 - [Project status](#project-status)
 - [Limitations](#limitations)
@@ -67,6 +70,7 @@ On **Ubuntu / Debian / WSL**:
 
 ```sh
 sudo apt install flex bison g++ llvm-14 llvm-14-dev
+export PATH=/usr/lib/llvm-14/bin:$PATH   # puts llvm-config and lli on the PATH
 ```
 
 ### Build and run
@@ -91,11 +95,11 @@ make test        # builds the compiler, then runs every test
 ./tests/run_tests.sh -v   # same, but also lists the passing tests
 ```
 
-The tests live in [`tests/`](tests/):
+The tests live in [`tests/`](tests/). There are 161 of them, and all pass:
 
-- `tests/cases/*.txt`: small programs, one per line, grouped by feature. Each is compiled, run with `lli`, and checked against its expected exit code and output.
-- `tests/errors.txt`: incorrect programs. The compiler must report the expected error, exit with 1, and write no `output.ll`.
-- `tests/examples.txt`: the sample programs in `testCaseExamples/`.
+- `tests/cases/*.txt` (120 tests): small programs, one per line, grouped by feature (arithmetic, arrays, functions, globals, if/else, loops, printf, switch). Each is compiled, run with `lli`, and checked against its expected exit code and output.
+- `tests/errors.txt` (35 tests): incorrect programs. The compiler must report the expected error, exit with 1, and write no `output.ll`.
+- `tests/examples.txt` (6 tests): the sample programs in `testCaseExamples/`.
 
 To add a test, add a line to the matching file. The format is explained at the top of each file.
 
@@ -116,16 +120,21 @@ int main() {
 ```llvm
 define i32 @main() {
 entry:
+  %b = alloca i32, align 4
   %a = alloca i32, align 4
   store i32 6, i32* %a, align 4
-  %b = alloca i32, align 4
   store i32 7, i32* %b, align 4
   %a1 = load i32, i32* %a, align 4
   %b2 = load i32, i32* %b, align 4
   %multmp = mul i32 %a1, %b2
   ret i32 %multmp
+
+after.jump:                                       ; No predecessors!
+  ret i32 0
 }
 ```
+
+Every local's `alloca` goes at the top of the entry block, which is the form LLVM's `mem2reg` pass expects. After a `return`, the compiler opens a fresh `after.jump` block so that any dead code that follows still has somewhere to go. Nothing jumps to that block, and LLVM accepts it.
 
 **Run it:**
 
@@ -166,6 +175,53 @@ flowchart LR
 2. **Syntax analysis.** `parser.y` defines the grammar. Bison generates an LALR(1) parser. Precedence declarations (`%left`, `%right`, `%nonassoc`) resolve operator ambiguity and the dangling `else`.
 3. **Semantic analysis.** As grammar rules are reduced, semantic actions look up and insert identifiers in a scoped symbol table, check types, and validate function calls.
 4. **Code generation.** The same actions call `llvm_ir.c`, which uses LLVM's `IRBuilder`. Each local variable becomes an `alloca`; reads and writes become `load` and `store`; expressions map to LLVM instructions. The module is verified and written to `output.ll`.
+
+## The pipeline, step by step
+
+The compiler has no separate syntax tree (AST). It does **single-pass syntax-directed translation**: each time Bison reduces a grammar rule, that rule's action checks the semantics and emits LLVM IR on the spot. You can watch this happen with `-v`. For this program:
+
+```c
+int main() {
+    int a = 6;
+    return a * 7;
+}
+```
+
+`./compiler -v` prints each token as Flex produces it and each grammar rule as Bison reduces it. Lines 2 and 3, filtered to tokens and rules:
+
+```
+Processing token at line 2: INT, Lexeme: int
+Expanding rule: type_specifier → INT (line 2)
+Processing token at line 2: IDENTIFIER, Lexeme: a
+Processing token at line 2: ASSIGN, Lexeme: =
+Processing token at line 2: NUMBER, Lexeme: 6
+Expanding rule: expr → NUMBER (line 2)
+Processing token at line 2: SEMI, Lexeme: ;
+Expanding rule: var_decl → IDENTIFIER ASSIGN expr (line 2)
+Expanding rule: var_list → var_decl (line 2)
+Expanding rule: declaration → type_specifier var_list (line 2)
+Expanding rule: stmt → declaration SEMI (line 2)
+Expanding rule: stmt_list → stmt (line 2)
+Processing token at line 3: RETURN, Lexeme: return
+Processing token at line 3: IDENTIFIER, Lexeme: a
+Processing token at line 3: MULT, Lexeme: *
+Expanding rule: expr → IDENTIFIER (line 3)
+Processing token at line 3: NUMBER, Lexeme: 7
+Expanding rule: expr → NUMBER (line 3)
+Expanding rule: expr → expr MULT expr (line 3)
+Processing token at line 3: SEMI, Lexeme: ;
+Expanding rule: stmt → RETURN expr SEMI (line 3)
+```
+
+The rules reduce bottom-up. `expr → IDENTIFIER` emits the `load` of `a`, `expr → NUMBER` produces the constant `7`, and `expr → expr MULT expr` emits the `mul`. Then `stmt → RETURN expr SEMI` emits the `ret`:
+
+```llvm
+  %a1 = load i32, i32* %a, align 4
+  %multmp = mul i32 %a1, 7
+  ret i32 %multmp
+```
+
+Bottom-up order makes control flow the tricky part. A loop's condition is reduced *before* the `while` rule itself, so the parser uses mid-rule actions and a stack of basic blocks to put each condition in the right block. See `parser.y` and `llvm_ir.c`.
 
 ## Project structure
 
@@ -231,7 +287,7 @@ These are valid C but not supported yet. Unless noted, the compiler reports a sy
 - [x] Stop writing IR when semantic errors occur
 - [ ] Optimization passes (mem2reg, constant folding)
 - [ ] Native executables via `llc` and the system linker
-- [x] String support in `printf`
+- [x] String literals and format strings in `printf` (string *arguments* such as `%s` are not supported yet)
 
 ## FAQ
 
